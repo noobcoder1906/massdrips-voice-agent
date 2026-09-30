@@ -1,76 +1,160 @@
-from pydantic import BaseModel, Field, EmailStr
-from typing import Optional, List, Dict, Any
+"""
+backend/models.py
+
+MongoDB document schemas using Pydantic v2.
+All collections are multi-tenant — every document carries tenant_id.
+
+Collections:
+  tenants   — SaaS client config (persona, voice, billing)
+  leads     — Individual contacts per tenant
+  products  — Product catalog per tenant
+  calls     — Call session logs
+  campaigns — Bulk outreach campaigns
+"""
+
 from datetime import datetime
-from uuid import uuid4
+from typing import Optional, Annotated, Any
+from pydantic import BaseModel, Field, GetJsonSchemaHandler
+from pydantic.json_schema import JsonSchemaValue
+from pydantic_core import core_schema
+from bson import ObjectId
 
-# Helper for MongoDB ObjectId string representation
-def generate_uuid() -> str:
-    return str(uuid4())
 
-class Tenant(BaseModel):
-    """A client business using VoxSales."""
-    id: str = Field(default_factory=generate_uuid, alias="_id")
-    name: str
-    slug: str
-    industry: Optional[str] = None
-    plan: str = "starter"
-    telephony_provider: str = "twilio"
-    telephony_config: Dict[str, Any] = {}
-    monthly_call_limit: int = 500
-    calls_used_this_month: int = 0
-    is_active: bool = True
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+# ── ObjectId support ───────────────────────────────────────────────────────────
+class PyObjectId(str):
+    """Pydantic-compatible MongoDB ObjectId field."""
 
-class User(BaseModel):
-    """A dashboard user within a tenant."""
-    id: str = Field(default_factory=generate_uuid, alias="_id")
-    tenant_id: str
-    email: EmailStr
-    password_hash: str
-    role: str = "member"
-    is_active: bool = True
+    @classmethod
+    def __get_validators__(cls):
+        yield cls.validate
 
-class Lead(BaseModel):
-    """A lead/contact that the agent will call."""
-    id: str = Field(default_factory=generate_uuid, alias="_id")
-    tenant_id: str
-    name: Optional[str] = None
-    phone: str
-    email: Optional[EmailStr] = None
-    city: Optional[str] = None
-    interests: List[str] = []
-    custom_data: Dict[str, Any] = {}
-    lead_score: int = 0
-    status: str = "new"  # new, contacted, interested, converted, declined
-    dnd_status: bool = False
-    conversation_history: List[Dict[str, Any]] = [] # Storing call summaries directly here
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    @classmethod
+    def validate(cls, v, info=None):
+        if isinstance(v, ObjectId):
+            return str(v)
+        if isinstance(v, str) and ObjectId.is_valid(v):
+            return v
+        raise ValueError(f"Invalid ObjectId: {v}")
 
-class Campaign(BaseModel):
-    """An outbound calling campaign targeting multiple leads."""
-    id: str = Field(default_factory=generate_uuid, alias="_id")
-    tenant_id: str
-    persona_id: str
-    name: str
-    status: str = "draft"
-    target_products: List[str] = []
-    discount_code: Optional[str] = None
-    max_concurrent_calls: int = 3
-    retry_attempts: int = 3
-    total_leads: int = 0
-    leads_called: int = 0
-    leads_converted: int = 0
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any) -> core_schema.CoreSchema:
+        return core_schema.no_info_plain_validator_function(cls.validate)
 
-class AgentPersona(BaseModel):
-    """Per-tenant AI agent configuration."""
-    id: str = Field(default_factory=generate_uuid, alias="_id")
-    tenant_id: str
-    name: str = "SalesBot"
-    voice_id: str = "af_heart"
-    language: str = "en"
-    system_prompt: str
-    greeting_script: str
-    objection_responses: Dict[str, List[str]] = {}
-    max_call_duration_sec: int = 300
-    personality_traits: List[str] = []
+
+# ── Tenant (SaaS Client) ───────────────────────────────────────────────────────
+class TenantPersona(BaseModel):
+    """AI agent persona configuration per tenant."""
+    agent_name:    str    = "Aria"
+    brand_name:    str    = "VoxSales"
+    language:      str    = "english"    # english | hindi | hinglish
+    tone:          str    = "friendly"   # friendly | professional | casual
+    agent_type:    str    = "sales"      # sales | support | sizing
+    max_words:     int    = 60
+
+
+class TenantCreate(BaseModel):
+    name:          str
+    email:         str
+    phone:         Optional[str] = None
+    persona:       TenantPersona = TenantPersona()
+    plan:          str = "free"          # free | pro | enterprise
+    is_active:     bool = True
+
+
+class TenantResponse(TenantCreate):
+    id:            str
+    created_at:    datetime
+    updated_at:    datetime
+
+
+# ── Lead ───────────────────────────────────────────────────────────────────────
+class LeadCreate(BaseModel):
+    tenant_id:     str
+    name:          str
+    phone:         str
+    email:         Optional[str] = None
+    interests:     list[str] = []
+    tags:          list[str] = []
+    language:      str = "english"
+    notes:         Optional[str] = None
+    status:        str = "new"           # new | contacted | interested | converted | dnc
+
+
+class LeadResponse(LeadCreate):
+    id:                          str
+    lead_score:                  int = 0
+    call_count:                  int = 0
+    last_call_at:                Optional[datetime] = None
+    last_interaction_summary:    Optional[str] = None
+    created_at:                  datetime
+    updated_at:                  datetime
+
+
+# ── Product ────────────────────────────────────────────────────────────────────
+class ProductCreate(BaseModel):
+    tenant_id:     str
+    name:          str
+    price:         float
+    currency:      str = "INR"
+    description:   str
+    category:      Optional[str] = None
+    tags:          list[str] = []
+    in_stock:      bool = True
+    sku:           Optional[str] = None
+    size_chart:    Optional[dict] = None   # For sizing agent
+
+
+class ProductResponse(ProductCreate):
+    id:            str
+    created_at:    datetime
+    updated_at:    datetime
+
+
+# ── Call Log ───────────────────────────────────────────────────────────────────
+class CallLogCreate(BaseModel):
+    tenant_id:     str
+    lead_id:       str
+    campaign_id:   Optional[str] = None
+    status:        str = "initiated"     # initiated | active | completed | failed
+    direction:     str = "outbound"      # outbound | inbound
+
+
+class CallLogResponse(CallLogCreate):
+    id:            str
+    started_at:    datetime
+    ended_at:      Optional[datetime] = None
+    duration_sec:  int = 0
+    transcript:    list[dict] = []       # [{"role":"user"|"agent","text":"...","ts":...}]
+    outcome:       Optional[str] = None  # interested | not_interested | callback | converted
+    sentiment:     Optional[str] = None  # positive | neutral | negative
+    recording_url: Optional[str] = None
+    lead_score_delta: int = 0
+
+
+# ── Campaign ───────────────────────────────────────────────────────────────────
+class CampaignCreate(BaseModel):
+    tenant_id:     str
+    name:          str
+    description:   Optional[str] = None
+    lead_ids:      list[str] = []
+    script_prompt: Optional[str] = None
+    status:        str = "draft"         # draft | running | paused | completed
+    max_concurrent_calls: int = 5
+    retry_count:   int = 2
+
+
+class CampaignResponse(CampaignCreate):
+    id:            str
+    total_leads:   int = 0
+    calls_made:    int = 0
+    calls_answered:int = 0
+    conversions:   int = 0
+    created_at:    datetime
+    updated_at:    datetime
+
+
+# ── Generic API response ───────────────────────────────────────────────────────
+class APIResponse(BaseModel):
+    success:   bool
+    message:   str
+    data:      Optional[Any] = None
