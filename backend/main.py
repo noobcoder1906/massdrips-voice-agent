@@ -1,7 +1,7 @@
 """
 backend/main.py
 
-VoxSales Multi-Tenant AI Voice Agent Platform API — Phase 8.
+VoxSales Multi-Tenant AI Voice Agent Platform API — Phase 9.
 """
 
 from fastapi import FastAPI
@@ -14,12 +14,16 @@ from backend.ws.voice_ws import router as voice_router
 from backend.routes.routes import tenant_router, lead_router, product_router
 from backend.routes.campaigns import router as campaign_router
 from backend.routes.smart import router as smart_router
+from backend.routes.calls import router as calls_router
+from backend.routes.webhooks import router as webhooks_router
 from backend.campaigns.scheduler import scheduler_instance
 
 app = FastAPI(
-    title="VoxSales API",
-    description="Multi-Tenant AI Voice Sales Agent Platform",
+    title="VoxSales Public API",
+    description="Multi-Tenant AI Voice Sales Agent Platform API & Developer SDK",
     version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 
 # CORS setup
@@ -34,12 +38,14 @@ app.add_middleware(
 # WebSocket (voice pipeline)
 app.include_router(voice_router)
 
-# REST API routes
+# REST API routes (v1)
 app.include_router(tenant_router)
 app.include_router(lead_router)
 app.include_router(product_router)
 app.include_router(campaign_router)
 app.include_router(smart_router)
+app.include_router(calls_router)
+app.include_router(webhooks_router)
 
 # Static Frontend Dashboard
 frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
