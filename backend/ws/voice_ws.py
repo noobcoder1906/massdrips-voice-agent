@@ -1,40 +1,68 @@
 """
 backend/ws/voice_ws.py
 
-WebSocket endpoint for real-time audio streaming.
+WebSocket endpoint for real-time audio streaming — Phase 3.
 
-Data flow per session:
+Full pipeline per session:
     Browser/Phone
         │  binary PCM frames (16kHz, 16-bit, mono)
-        ▼
-    voice_ws (this file)
-        │  raw bytes
         ▼
     VoiceActivityDetector   [VAD — Silero ONNX]
         │  complete utterance bytes
         ▼
-    stt_queue (asyncio.Queue)
-        │
-    stt_worker task         [Whisper STT]
-        │  {"tenant_id", "lead_id", "transcript"}
+    stt_queue ──► stt_worker      [Faster-Whisper STT]
+        │  {"transcript": str}
         ▼
-    transcript_queue (asyncio.Queue)
-        │
-    [Phase 3: LLM agent — coming next]
+    transcript_queue ──► llm_worker  [Ollama LLM — streaming]
+        │  {"response": str}
+        ▼
+    response_queue ──► WebSocket relay  (Phase 4: → TTS)
 """
 
 import asyncio
 import json
 import logging
+import os
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from backend.voice.vad import VoiceActivityDetector
 from backend.voice.stt import stt_worker
+from backend.agent.llm import llm_worker
+from backend.agent.prompts import build_system_prompt, DEFAULT_PERSONA
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _get_tenant_config(tenant_id: str) -> dict:
+    """
+    TODO (Phase 5): Load from MongoDB tenant collection.
+    For now returns default Mass Drips config.
+    """
+    return {**DEFAULT_PERSONA, "tenant_id": tenant_id}
+
+
+def _get_lead_info(lead_id: str) -> dict:
+    """
+    TODO (Phase 5): Load from MongoDB leads collection.
+    For now returns placeholder lead data.
+    """
+    return {
+        "id":    lead_id,
+        "name":  "Customer",
+        "interests": [],
+        "last_interaction_summary": "",
+    }
+
+
+def _get_products(tenant_id: str) -> list:
+    """
+    TODO (Phase 5): Load from MongoDB product catalog.
+    For now returns empty — agent will still work generically.
+    """
+    return []
 
 
 @router.websocket("/ws/voice/{tenant_id}/{lead_id}")
@@ -44,27 +72,36 @@ async def voice_websocket(
     lead_id: str,
 ):
     """
-    Multi-tenant WebSocket endpoint.
+    Multi-tenant WebSocket endpoint — Phase 3.
+    Full pipeline: Audio → VAD → STT → LLM → WebSocket response.
 
     URL params:
-        tenant_id — Identifies the SaaS client.
+        tenant_id — Identifies the SaaS client / brand.
         lead_id   — Identifies the specific call/lead.
-
-    Message types:
-        Binary  → raw PCM audio bytes → VAD → STT
-        Text    → JSON control messages (e.g. {"type": "start_call"})
     """
     await websocket.accept()
     logger.info(f"[{tenant_id}/{lead_id}] WebSocket connected.")
 
-    # ── Per-session queues ──────────────────────────────────────────────────
-    stt_queue        = asyncio.Queue()   # VAD  --> STT worker
-    transcript_queue = asyncio.Queue()   # STT  --> LLM agent (Phase 3)
+    # ── Build tenant system prompt ──────────────────────────────────────────
+    tenant_config = _get_tenant_config(tenant_id)
+    lead_info     = _get_lead_info(lead_id)
+    products      = _get_products(tenant_id)
+    system_prompt = build_system_prompt(
+        tenant_config=tenant_config,
+        lead_info=lead_info,
+        products=products,
+    )
+    logger.info(f"[{tenant_id}/{lead_id}] System prompt built ({len(system_prompt)} chars)")
 
-    # ── Voice Activity Detector ─────────────────────────────────────────────
+    # ── Per-session async queues ────────────────────────────────────────────
+    stt_queue        = asyncio.Queue()  # VAD  → STT worker
+    transcript_queue = asyncio.Queue()  # STT  → LLM worker
+    response_queue   = asyncio.Queue()  # LLM  → WS relay (Phase 4: → TTS)
+
+    # ── VAD instance ────────────────────────────────────────────────────────
     vad = VoiceActivityDetector(output_queue=stt_queue)
 
-    # ── STT background worker ───────────────────────────────────────────────
+    # ── Background workers ──────────────────────────────────────────────────
     stt_task = asyncio.create_task(
         stt_worker(
             stt_queue=stt_queue,
@@ -74,37 +111,48 @@ async def voice_websocket(
         )
     )
 
-    # ── Transcript relay task (sends transcript back over WS for now) ───────
-    async def relay_transcripts():
-        """Relay transcription results back to the client over WebSocket."""
+    llm_task = asyncio.create_task(
+        llm_worker(
+            transcript_queue=transcript_queue,
+            response_queue=response_queue,
+            system_prompt=system_prompt,
+            tenant_id=tenant_id,
+            lead_id=lead_id,
+        )
+    )
+
+    # ── Response relay: sends LLM reply back to client over WebSocket ───────
+    async def relay_responses():
         while True:
-            result = await transcript_queue.get()
+            result = await response_queue.get()
             if result is None:
                 break
             msg = {
-                "type":       "transcript",
+                "type":       "agent_response",
                 "tenant_id":  result["tenant_id"],
                 "lead_id":    result["lead_id"],
-                "text":       result["transcript"],
+                "user_said":  result["user_text"],
+                "agent_said": result["response"],
             }
             try:
                 await websocket.send_text(json.dumps(msg))
                 logger.info(
-                    f"[{tenant_id}/{lead_id}] Transcript sent: "
-                    f"'{result['transcript']}'"
+                    f"[{tenant_id}/{lead_id}] "
+                    f"User: '{result['user_text']}' | "
+                    f"Agent: '{result['response'][:80]}...'"
                 )
             except Exception:
                 break
-            transcript_queue.task_done()
+            response_queue.task_done()
 
-    relay_task = asyncio.create_task(relay_transcripts())
+    relay_task = asyncio.create_task(relay_responses())
 
     # ── Main receive loop ───────────────────────────────────────────────────
     try:
         while True:
             message = await websocket.receive()
 
-            # Binary: raw PCM audio
+            # Binary: raw PCM audio bytes → VAD pipeline
             if "bytes" in message and message["bytes"] is not None:
                 await vad.feed(message["bytes"])
 
@@ -116,24 +164,29 @@ async def voice_websocket(
                     logger.info(
                         f"[{tenant_id}/{lead_id}] Control msg: {msg_type}"
                     )
-                    # Echo back for now; Phase 3 will handle commands
                     await websocket.send_text(
                         json.dumps({"type": "ack", "received": payload})
                     )
                 except json.JSONDecodeError:
-                    # Plain text — legacy support from test_ws_client
-                    await websocket.send_text(
-                        f"Server acknowledged: {message['text']}"
-                    )
+                    # Legacy plain text (e.g. from test client)
+                    # Route as direct user message to LLM
+                    await transcript_queue.put({
+                        "tenant_id":  tenant_id,
+                        "lead_id":    lead_id,
+                        "transcript": message["text"],
+                    })
 
     except WebSocketDisconnect:
         logger.info(f"[{tenant_id}/{lead_id}] WebSocket disconnected.")
 
     finally:
         # ── Graceful teardown ───────────────────────────────────────────────
-        await vad.flush()                   # Flush any trailing speech
-        await stt_queue.put(None)           # Signal STT worker to stop
-        await stt_task                      # Wait for STT to finish
-        await transcript_queue.put(None)    # Signal relay to stop
+        await vad.flush()
+        await stt_queue.put(None)        # Stop STT worker
+        await stt_task
+
+        await transcript_queue.put(None) # Stop LLM worker
+        await llm_task
+
         relay_task.cancel()
-        logger.info(f"[{tenant_id}/{lead_id}] Session cleaned up.")
+        logger.info(f"[{tenant_id}/{lead_id}] Session fully cleaned up.")
