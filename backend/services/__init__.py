@@ -9,6 +9,8 @@ from backend.services.campaign_service import (
     create_campaign, get_campaign, get_campaigns_for_tenant, update_campaign_status,
     add_leads_to_campaign, get_active_campaigns, update_campaign_lead_state
 )
+from backend.services.post_call_service import generate_post_call_message
+from backend.services.webhook_service import dispatch_call_webhook
 
 __all__ = [
     "create_tenant", "get_tenant", "get_all_tenants", "update_tenant", "get_tenant_persona",
@@ -17,4 +19,5 @@ __all__ = [
     "create_call_log", "append_transcript", "close_call_log",
     "create_campaign", "get_campaign", "get_campaigns_for_tenant", "update_campaign_status",
     "add_leads_to_campaign", "get_active_campaigns", "update_campaign_lead_state",
+    "generate_post_call_message", "dispatch_call_webhook",
 ]
