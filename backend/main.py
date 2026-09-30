@@ -1,17 +1,19 @@
 """
 backend/main.py
 
-VoxSales Multi-Tenant AI Voice Agent Platform API — Phase 6.
+VoxSales Multi-Tenant AI Voice Agent Platform API & Client Dashboard — Phase 7.
 """
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
 from backend.database import connect_to_mongo, close_mongo_connection, db_instance
 from backend.ws.voice_ws import router as voice_router
 from backend.routes.routes import tenant_router, lead_router, product_router
 from backend.routes.campaigns import router as campaign_router
 from backend.campaigns.scheduler import scheduler_instance
-import uvicorn
 
 app = FastAPI(
     title="VoxSales API",
@@ -22,7 +24,7 @@ app = FastAPI(
 # CORS setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Restrict in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,6 +39,24 @@ app.include_router(lead_router)
 app.include_router(product_router)
 app.include_router(campaign_router)
 
+# Static Frontend Dashboard
+frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
+if os.path.exists(frontend_path):
+    app.mount("/static", StaticFiles(directory=frontend_path), name="static")
+
+    @app.get("/styles.css", include_in_schema=False)
+    async def serve_css():
+        return FileResponse(os.path.join(frontend_path, "styles.css"))
+
+    @app.get("/app.js", include_in_schema=False)
+    async def serve_js():
+        return FileResponse(os.path.join(frontend_path, "app.js"))
+
+    @app.get("/dashboard", include_in_schema=False)
+    @app.get("/", include_in_schema=False)
+    async def serve_dashboard():
+        return FileResponse(os.path.join(frontend_path, "index.html"))
+
 
 @app.on_event("startup")
 async def startup_db_client():
@@ -48,22 +68,3 @@ async def startup_db_client():
 async def shutdown_db_client():
     scheduler_instance.stop()
     await close_mongo_connection()
-
-
-@app.get("/", tags=["Health"])
-async def root():
-    try:
-        await db_instance.client.admin.command('ping')
-        db_status = "MongoDB connected"
-    except Exception as e:
-        db_status = f"MongoDB disconnected: {str(e)}"
-    return {
-        "status": "VoxSales API is running",
-        "version": "2.0.0",
-        "db": db_status,
-        "scheduler": "running" if scheduler_instance.is_running else "stopped"
-    }
-
-
-if __name__ == "__main__":
-    uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)

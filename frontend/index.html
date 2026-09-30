@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VoxSales — AI Voice Sales Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+  <!-- Sidebar Navigation -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo">V</div>
+      <div class="brand-text">
+        <h2>VoxSales</h2>
+        <span>Voice AI Platform</span>
+      </div>
+    </div>
+
+    <nav class="nav-menu">
+      <a class="nav-item active" onclick="switchView('overview')">
+        <span>📊 Overview & KPIs</span>
+      </a>
+      <a class="nav-item" onclick="switchView('campaigns')">
+        <span>🚀 Campaign Hub</span>
+      </a>
+      <a class="nav-item" onclick="switchView('live-call')">
+        <span>🎙️ Live Call Monitor</span>
+      </a>
+      <a class="nav-item" onclick="switchView('call-logs')">
+        <span>📞 Call Transcripts</span>
+      </a>
+      <a class="nav-item" onclick="switchView('leads')">
+        <span>👥 Lead Management</span>
+      </a>
+      <a class="nav-item" onclick="switchView('products')">
+        <span>📦 Product Catalog</span>
+      </a>
+      <a class="nav-item" onclick="switchView('agent-config')">
+        <span>⚙️ Agent Persona</span>
+      </a>
+    </nav>
+
+    <div class="tenant-selector">
+      <label>Active Tenant</label>
+      <select id="tenantSelect" onchange="onTenantChanged()">
+        <option value="6abd262975108fde8f7b524c">Mass Drips (Client #1)</option>
+      </select>
+    </div>
+  </aside>
+
+  <!-- Main Content Layout -->
+  <main class="main-content">
+    <header class="top-bar">
+      <h1 id="pageTitle">Overview & Analytics</h1>
+      <div class="status-badge">
+        <div class="pulse-dot"></div>
+        <span>AI Engine Online (Ollama + Kokoro)</span>
+      </div>
+    </header>
+
+    <!-- VIEW 1: OVERVIEW -->
+    <div id="view-overview" class="view-container active">
+      <div class="grid-4">
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span>Total Calls Made</span>
+            <span>📞</span>
+          </div>
+          <div class="kpi-value" id="kpiTotalCalls">24</div>
+          <div class="kpi-sub">+18% vs last week</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span>Conversion Rate</span>
+            <span>🎯</span>
+          </div>
+          <div class="kpi-value" id="kpiConversion">32.4%</div>
+          <div class="kpi-sub">Target: > 25%</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span>Avg Call Duration</span>
+            <span>⏱️</span>
+          </div>
+          <div class="kpi-value" id="kpiDuration">1m 45s</div>
+          <div class="kpi-sub">Voice-to-voice: ~420ms</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span>Cost Per Call</span>
+            <span>💰</span>
+          </div>
+          <div class="kpi-value" id="kpiCost">₹ 1.20</div>
+          <div class="kpi-sub">70% cheaper than Bland AI</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">
+            <span>Recent Outreach Performance</span>
+            <button class="btn btn-secondary" onclick="loadOverviewData()">Refresh</button>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Lead</th>
+                <th>Phone</th>
+                <th>Outcome</th>
+                <th>Score</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="overviewTableBody">
+              <tr><td colspan="5">Loading overview data...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Customer Sentiment Breakdown</div>
+          <div style="padding: 20px 0; text-align: center;">
+            <div style="font-size: 36px; font-weight: 800; color: #34d399;">78% Positive</div>
+            <p style="color: var(--text-muted); font-size: 13px; margin-top: 8px;">Based on real-time LLM post-call sentiment evaluation.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 2: CAMPAIGN HUB -->
+    <div id="view-campaigns" class="view-container">
+      <div class="card">
+        <div class="card-title">
+          <span>Active Outreach Campaigns</span>
+          <button class="btn btn-primary" onclick="showCreateCampaignModal()">+ New Campaign</button>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Campaign Name</th>
+              <th>Status</th>
+              <th>Total Leads</th>
+              <th>Calls Made</th>
+              <th>Conversions</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="campaignsTableBody">
+            <tr><td colspan="6">Loading campaigns...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- VIEW 3: LIVE CALL MONITOR -->
+    <div id="view-live-call" class="view-container">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Live Call Audio Simulator & Transcript</div>
+          <div class="transcript-box" id="liveTranscript">
+            <div class="chat-bubble chat-agent">
+              <strong>Aria (Mass Drips Agent):</strong> "Haan bilkul! Hamara Drip Hoodie 1899 rupees mein available hai. Size XL chahte hain aap?"
+            </div>
+            <div class="chat-bubble chat-user">
+              <strong>Rahul Sharma:</strong> "Ha XL chahiye, discount milega kya?"
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Call Metrics & Controls</div>
+          <div class="form-group">
+            <label>Select Lead to Call</label>
+            <select id="simLeadSelect" class="form-control"></select>
+          </div>
+          <button class="btn btn-primary" style="width: 100%; margin-top: 12px;" onclick="simulateLiveCall()">🎙️ Start Simulated Voice Call</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 4: CALL LOGS -->
+    <div id="view-call-logs" class="view-container">
+      <div class="card">
+        <div class="card-title">Call History & Transcripts</div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Call ID</th>
+              <th>Lead</th>
+              <th>Duration</th>
+              <th>Outcome</th>
+              <th>Sentiment</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody id="callLogsTableBody">
+            <tr><td colspan="6">No call history recorded yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- VIEW 5: LEADS -->
+    <div id="view-leads" class="view-container">
+      <div class="card">
+        <div class="card-title">
+          <span>Lead Directory</span>
+          <button class="btn btn-secondary" onclick="loadLeads()">Refresh</button>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Phone</th>
+              <th>Status</th>
+              <th>Lead Score</th>
+              <th>Interests</th>
+            </tr>
+          </thead>
+          <tbody id="leadsTableBody">
+            <tr><td colspan="5">Loading leads...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- VIEW 6: PRODUCTS -->
+    <div id="view-products" class="view-container">
+      <div class="card">
+        <div class="card-title">
+          <span>Product Catalog</span>
+          <button class="btn btn-secondary" onclick="loadProducts()">Refresh</button>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Product Name</th>
+              <th>Price</th>
+              <th>Category</th>
+              <th>In Stock</th>
+              <th>SKU</th>
+            </tr>
+          </thead>
+          <tbody id="productsTableBody">
+            <tr><td colspan="5">Loading catalog...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- VIEW 7: AGENT CONFIG -->
+    <div id="view-agent-config" class="view-container">
+      <div class="card" style="max-width: 600px;">
+        <div class="card-title">Configure Agent Persona</div>
+        <form id="personaForm" onsubmit="savePersona(event)">
+          <div class="form-group">
+            <label>Agent Name</label>
+            <input type="text" id="agentName" class="form-control" value="Aria">
+          </div>
+          <div class="form-group">
+            <label>Brand Name</label>
+            <input type="text" id="brandName" class="form-control" value="Mass Drips">
+          </div>
+          <div class="form-group">
+            <label>Primary Language</label>
+            <select id="agentLang" class="form-control">
+              <option value="hinglish" selected>Hinglish (Hindi + English)</option>
+              <option value="hindi">Hindi</option>
+              <option value="english">English</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Tone of Voice</label>
+            <select id="agentTone" class="form-control">
+              <option value="friendly" selected>Friendly & Energetic</option>
+              <option value="professional">Professional</option>
+              <option value="casual">Casual Streetwear</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary" style="margin-top: 16px;">Save Persona Settings</button>
+        </form>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
