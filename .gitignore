@@ -25,3 +25,7 @@ backend/voice/models/
 *.onnx
 *.pt
 *.bin
+
+# Temp pip logs
+pip_*.txt
+*.log
