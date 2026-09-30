@@ -19,3 +19,9 @@ env/
 # OS
 Thumbs.db
 .DS_Store
+
+# ONNX / Whisper model weights (auto-downloaded at runtime)
+backend/voice/models/
+*.onnx
+*.pt
+*.bin
