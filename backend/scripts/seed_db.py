@@ -164,17 +164,17 @@ async def seed():
             print(f"[OK]   Product: {product['name']} -> {r.inserted_id}")
 
     # ── MongoDB Indexes ────────────────────────────────────────────────────
-    await db["tenants"].create_index("slug", unique=True, background=True)
-    await db["leads"].create_index([("tenant_id", 1), ("status", 1)], background=True)
-    await db["leads"].create_index("phone", background=True)
-    await db["products"].create_index([("tenant_id", 1), ("in_stock", 1)], background=True)
-    await db["calls"].create_index([("tenant_id", 1), ("lead_id", 1)], background=True)
-    print("[OK]   MongoDB indexes created")
+    await db["tenants"].create_index("slug", unique=True)
+    await db["leads"].create_index([("tenant_id", 1), ("status", 1)])
+    await db["leads"].create_index("phone")
+    await db["products"].create_index([("tenant_id", 1), ("in_stock", 1)])
+    await db["calls"].create_index([("tenant_id", 1), ("lead_id", 1)])
+    print("[OK]   MongoDB indexes created", flush=True)
 
-    print("\n=== Seeding complete! ===")
-    print(f"Tenant ID : {tenant_id}")
-    print(f"Test WS   : ws://localhost:8000/ws/voice/{tenant_id}/<lead_id>")
-    print(f"Docs URL  : http://localhost:8000/docs")
+    print("\n=== Seeding complete! ===", flush=True)
+    print(f"Tenant ID : {tenant_id}", flush=True)
+    print(f"Test WS   : ws://localhost:8000/ws/voice/{tenant_id}/<lead_id>", flush=True)
+    print(f"Docs URL  : http://localhost:8000/docs", flush=True)
 
     await close_mongo_connection()
 

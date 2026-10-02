@@ -153,7 +153,8 @@ class CampaignScheduler:
                 for campaign in active_campaigns:
                     await self._process_campaign(campaign)
             except Exception as e:
-                logger.error(f"Error in Campaign Scheduler loop: {e}")
+                logger.debug(f"Campaign Scheduler loop waiting for DB: {e}")
+                await asyncio.sleep(15)
             await asyncio.sleep(self.check_interval_sec)
 
     def start(self) -> None:

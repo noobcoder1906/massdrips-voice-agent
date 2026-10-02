@@ -38,8 +38,11 @@ import soundfile as sf
 
 logger = logging.getLogger(__name__)
 
+TTS_PROVIDER     = os.getenv("TTS_PROVIDER", "kokoro").lower()
 TTS_VOICE        = os.getenv("TTS_VOICE", "af_heart")
 TTS_SPEED        = float(os.getenv("TTS_SPEED", "1.0"))
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "")
 KOKORO_SAMPLE_RATE = 24000   # Kokoro native output rate
 TARGET_SAMPLE_RATE = 16000   # Must match VAD/STT pipeline
 
