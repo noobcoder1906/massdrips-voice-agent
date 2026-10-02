@@ -1,63 +1,49 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Mic, Zap, Phone, Clock, Activity, CheckCircle, AlertTriangle, Info, Minus } from 'lucide-react';
+import { ArrowRight, Mic, Phone, Clock, Activity, PhoneCall } from 'lucide-react';
 import StatsCard from '../components/StatsCard';
 import Card, { CardHeader, CardTitle } from '../components/Card';
 import { StatusBadge } from '../components/Badge';
 import Button from '../components/Button';
 import { SkeletonCard } from '../components/Skeleton';
-import { useToast } from '../components/Toast';
-import { mockStats, mockCallLogs, mockActivity, mockCampaigns } from '../data/mockData';
-
-// Simple inline bar chart (no external charting lib needed)
-function MiniChart({ data }: { data: number[] }) {
-  const max = Math.max(...data);
-  return (
-    <div className="flex items-end gap-0.5 h-10">
-      {data.map((v, i) => (
-        <div
-          key={i}
-          className="flex-1 rounded-sm transition-all duration-300 hover:opacity-80"
-          style={{
-            height: `${(v / max) * 100}%`,
-            background: i === data.length - 1
-              ? 'var(--color-accent)'
-              : 'rgba(0,229,153,0.3)',
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-function ActivityIcon({ type }: { type: string }) {
-  const map: Record<string, { icon: typeof CheckCircle; color: string }> = {
-    call_completed: { icon: CheckCircle, color: '#00e599' },
-    campaign_launched: { icon: Zap, color: '#6366f1' },
-    lead_added: { icon: Activity, color: '#00e599' },
-    call_failed: { icon: AlertTriangle, color: '#f59e0b' },
-    webhook_triggered: { icon: Info, color: '#6366f1' },
-    agent_updated: { icon: Minus, color: '#9090a8' },
-  };
-  const cfg = map[type] ?? { icon: Activity, color: '#9090a8' };
-  const Icon = cfg.icon;
-  return (
-    <div
-      className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-      style={{ background: `${cfg.color}20`, border: `1px solid ${cfg.color}40` }}
-    >
-      <Icon size={14} style={{ color: cfg.color }} />
-    </div>
-  );
-}
+import LiveCallModal from '../components/LiveCallModal';
+import { getRealCalls, getRealActivities, type CallRecord, type ActivityItem, massDripsCampaigns, massDripsLeads } from '../data/realStore';
 
 export default function Dashboard() {
   const [loading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'calls' | 'campaigns'>('calls');
+  const [activeTab, setActiveTab] = useState<'calls' | 'leads' | 'campaigns'>('calls');
+  const [callModalOpen, setCallModalOpen] = useState(false);
+  const [selectedLead, setSelectedLead] = useState({ name: 'Rahul Sharma', phone: '+91 98765 43210' });
+  const [realCalls, setRealCalls] = useState<CallRecord[]>([]);
+  const [realActivities, setRealActivities] = useState<ActivityItem[]>([]);
   const navigate = useNavigate();
-  const { showToast } = useToast();
 
-  const weekData = [420, 680, 920, 1240, 1560, 1890, 2120];
+  useEffect(() => {
+    refreshData();
+  }, []);
+
+  const refreshData = () => {
+    setRealCalls(getRealCalls());
+    setRealActivities(getRealActivities());
+  };
+
+  const totalCalls = realCalls.length;
+  const conversions = realCalls.filter(c => c.outcome === 'converted').length;
+  const conversionRate = totalCalls > 0 ? ((conversions / totalCalls) * 100).toFixed(1) + '%' : '0.0%';
+  const avgDurationSec = totalCalls > 0 ? Math.round(realCalls.reduce((acc, c) => acc + c.durationSec, 0) / totalCalls) : 0;
+  const avgDuration = avgDurationSec > 0 ? `${Math.floor(avgDurationSec / 60)}m ${avgDurationSec % 60}s` : '0s';
+
+  const realStats = [
+    { label: 'Total Calls Made', value: totalCalls.toString(), change: totalCalls > 0 ? `+${totalCalls} live` : '0 calls', trend: 'neutral' as const, icon: 'phone' },
+    { label: 'Conversion Rate', value: conversionRate, change: totalCalls > 0 ? `${conversions} converted` : '0%', trend: conversions > 0 ? 'up' as const : 'neutral' as const, icon: 'target' },
+    { label: 'Avg Call Duration', value: avgDuration, change: 'Live duration', trend: 'neutral' as const, icon: 'clock' },
+    { label: 'Cost Per Call', value: '₹0.00', change: 'Free local & Groq', trend: 'up' as const, icon: 'rupee' },
+  ];
+
+  const handleStartCallWithLead = (lead: { name: string; phone: string }) => {
+    setSelectedLead(lead);
+    setCallModalOpen(true);
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -69,7 +55,6 @@ export default function Dashboard() {
           border: '1px solid var(--color-border)',
         }}
       >
-        {/* Background glow orbs */}
         <div
           className="absolute -top-20 -right-20 w-64 h-64 rounded-full pointer-events-none"
           style={{ background: 'radial-gradient(circle, rgba(0,229,153,0.08) 0%, transparent 70%)' }}
@@ -86,18 +71,17 @@ export default function Dashboard() {
               style={{ background: 'var(--color-accent-muted)', color: 'var(--color-accent)', border: '1px solid var(--color-accent-border)' }}
             >
               <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--color-accent)' }} />
-              AI Engine Online · 420ms avg latency
+              Mass Drips AI Engine Active · Groq LLM + Kokoro TTS
             </div>
 
             <h1
               className="text-2xl lg:text-3xl font-bold leading-tight mb-2"
               style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
             >
-              Your AI sales team is{' '}
-              <span style={{ color: 'var(--color-accent)' }}>crushing it today</span>
+              Mass Drips <span style={{ color: 'var(--color-accent)' }}>Voice Sales Assistant</span>
             </h1>
             <p className="text-sm max-w-md" style={{ color: 'var(--color-text-secondary)' }}>
-              698 calls made · 32.4% conversion rate · ₹1.20 per call. Mass Drips AI is outperforming the industry average by 3×.
+              Outbound AI sales agent for hoodies, oversized tees, and streetwear. Conducts live consultative sales calls, handles objections, and sends automated WhatsApp follow-ups.
             </p>
 
             <div className="flex flex-wrap gap-3 mt-5">
@@ -105,11 +89,9 @@ export default function Dashboard() {
                 variant="primary"
                 size="lg"
                 leftIcon={<Mic size={15} />}
-                onClick={() => {
-                  showToast('success', 'Call initiated!', 'Connecting to lead Ananya Roy...');
-                }}
+                onClick={() => setCallModalOpen(true)}
               >
-                Start Voice Call
+                Start Live Voice Call
               </Button>
               <Button
                 variant="secondary"
@@ -122,32 +104,31 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Right side — live stats mini-widget */}
+          {/* Right side — live status widget */}
           <div
             className="w-full lg:w-56 shrink-0 rounded-xl p-4 space-y-3"
             style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid var(--color-border)' }}
           >
-            <p className="text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Weekly Calls</p>
-            <MiniChart data={weekData} />
-            <div className="flex items-center justify-between">
-              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>This week</p>
-              <p className="text-xs font-bold" style={{ color: 'var(--color-accent)' }}>+18.4%</p>
+            <p className="text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Brand Voice Status</p>
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+              <span className="text-xs font-bold text-white">Aria (Mass Drips)</span>
             </div>
+            <p className="text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>Language: Hinglish / English</p>
             <div className="pt-2" style={{ borderTop: '1px solid var(--color-border)' }}>
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--color-accent)' }} />
-                <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>3 active campaigns</span>
-              </div>
+              <span className="text-xs font-medium" style={{ color: 'var(--color-accent)' }}>
+                {totalCalls} calls processed today
+              </span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* KPI Stats */}
+      {/* Real KPI Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {loading
           ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
-          : mockStats.map((stat, i) => (
+          : realStats.map((stat, i) => (
               <StatsCard key={stat.label} {...stat} delay={i * 80} />
             ))
         }
@@ -155,21 +136,20 @@ export default function Dashboard() {
 
       {/* Main Grid */}
       <div className="grid lg:grid-cols-3 gap-4">
-        {/* Recent Activity / Calls — takes 2 columns */}
+        {/* Recent Activity / Calls — 2 cols */}
         <div className="lg:col-span-2 space-y-4">
-          {/* Tabs */}
           <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}>
-            {(['calls', 'campaigns'] as const).map((tab) => (
+            {(['calls', 'leads', 'campaigns'] as const).map((tab) => (
               <button
                 key={tab}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => setActiveTab(tab as any)}
                 className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 capitalize"
                 style={activeTab === tab
                   ? { background: 'var(--color-accent)', color: '#0a0a0f' }
                   : { color: 'var(--color-text-muted)' }
                 }
               >
-                {tab === 'calls' ? 'Recent Calls' : 'Campaigns'}
+                {tab === 'calls' ? 'Processed Calls' : tab === 'leads' ? 'Ready Leads' : 'Campaigns'}
               </button>
             ))}
           </div>
@@ -178,31 +158,69 @@ export default function Dashboard() {
             {activeTab === 'calls' ? (
               <div>
                 <CardHeader>
-                  <CardTitle>Call History</CardTitle>
-                  <Button size="sm" variant="ghost" rightIcon={<ArrowRight size={12} />} onClick={() => navigate('/analytics')}>
-                    View All
-                  </Button>
+                  <CardTitle>Real Processed Call Logs</CardTitle>
+                  <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{realCalls.length} calls</span>
                 </CardHeader>
-                <div className="space-y-0 -mx-5">
-                  {mockCallLogs.slice(0, 5).map((call, i) => (
-                    <div
-                      key={call.id}
-                      className="flex items-center gap-4 px-5 py-3 hover:bg-white/3 transition-colors cursor-pointer"
-                      style={{ borderTop: i > 0 ? '1px solid var(--color-border)' : 'none' }}
-                    >
+
+                {realCalls.length === 0 ? (
+                  <div className="text-center py-10 px-4 space-y-3">
+                    <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mx-auto text-white/40">
+                      <PhoneCall size={20} />
+                    </div>
+                    <p className="text-sm font-semibold text-white">No calls processed yet</p>
+                    <p className="text-xs text-white/50 max-w-sm mx-auto">
+                      Click the "Start Live Voice Call" button above or select a lead below to test a live call with Aria. Real transcripts and insights will appear here!
+                    </p>
+                    <Button size="sm" variant="primary" onClick={() => setCallModalOpen(true)}>
+                      Launch Test Call Now
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-0 -mx-5 divide-y divide-white/5">
+                    {realCalls.map((call) => (
                       <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
-                        style={{ background: 'var(--color-accent-muted)', color: 'var(--color-accent)' }}
+                        key={call.id}
+                        className="flex items-center gap-4 px-5 py-3.5 hover:bg-white/5 transition-colors cursor-pointer"
                       >
-                        {call.lead.split(' ').map(n => n[0]).join('')}
+                        <div
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                          style={{ background: 'var(--color-accent-muted)', color: 'var(--color-accent)' }}
+                        >
+                          {call.lead.split(' ').map(n => n[0]).join('')}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate text-white">{call.lead}</p>
+                          <p className="text-xs text-white/50">
+                            <Clock size={10} className="inline mr-1" />{call.duration} · {call.date} · Score: {call.score}/100
+                          </p>
+                        </div>
+                        <StatusBadge status={call.outcome} />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>{call.lead}</p>
-                        <p className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>
-                          <Clock size={10} className="inline mr-1" />{call.duration} · {call.date}
-                        </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : activeTab === 'leads' ? (
+              <div>
+                <CardHeader>
+                  <CardTitle>Mass Drips Leads</CardTitle>
+                  <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Ready for calling</span>
+                </CardHeader>
+                <div className="space-y-0 -mx-5 divide-y divide-white/5">
+                  {massDripsLeads.map((lead) => (
+                    <div key={lead.id} className="flex items-center justify-between px-5 py-3.5 hover:bg-white/5 transition-colors">
+                      <div>
+                        <p className="text-sm font-medium text-white">{lead.name}</p>
+                        <p className="text-xs text-white/50">{lead.phone} · {lead.city} · Interested in: {lead.interests.join(', ')}</p>
                       </div>
-                      <StatusBadge status={call.outcome} />
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        leftIcon={<Phone size={12} />}
+                        onClick={() => handleStartCallWithLead(lead)}
+                      >
+                        Call
+                      </Button>
                     </div>
                   ))}
                 </div>
@@ -210,46 +228,19 @@ export default function Dashboard() {
             ) : (
               <div>
                 <CardHeader>
-                  <CardTitle>Active Campaigns</CardTitle>
+                  <CardTitle>Mass Drips Campaigns</CardTitle>
                   <Button size="sm" variant="ghost" rightIcon={<ArrowRight size={12} />} onClick={() => navigate('/campaigns')}>
                     Manage
                   </Button>
                 </CardHeader>
                 <div className="space-y-3">
-                  {mockCampaigns.filter(c => c.status === 'active').map((campaign) => (
-                    <div
-                      key={campaign.id}
-                      className="p-3 rounded-xl hover:bg-white/3 transition-colors"
-                      style={{ border: '1px solid var(--color-border)' }}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>{campaign.name}</p>
-                        <StatusBadge status={campaign.status} />
+                  {massDripsCampaigns.map((campaign) => (
+                    <div key={campaign.id} className="p-3.5 rounded-xl border border-white/10 bg-white/5 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-white">{campaign.name}</p>
+                        <p className="text-xs text-white/50">Target Product: {campaign.product} · {campaign.leads} leads queued</p>
                       </div>
-                      <div className="flex gap-4">
-                        <div>
-                          <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Calls</p>
-                          <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{campaign.calls.toLocaleString()}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Conv.</p>
-                          <p className="text-sm font-semibold" style={{ color: 'var(--color-accent)' }}>{campaign.successRate}%</p>
-                        </div>
-                        <div>
-                          <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Product</p>
-                          <p className="text-sm font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{campaign.product}</p>
-                        </div>
-                      </div>
-                      {/* Progress bar */}
-                      <div className="mt-2 h-1 rounded-full" style={{ background: 'var(--color-bg-elevated)' }}>
-                        <div
-                          className="h-1 rounded-full transition-all"
-                          style={{
-                            width: `${(campaign.calls / campaign.leads) * 100}%`,
-                            background: 'var(--color-accent)',
-                          }}
-                        />
-                      </div>
+                      <StatusBadge status={campaign.status} />
                     </div>
                   ))}
                 </div>
@@ -258,99 +249,70 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* Activity Feed */}
-        <Card className="h-fit">
-          <CardHeader>
-            <CardTitle>Live Activity</CardTitle>
-            <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--color-accent)' }} />
-              <span className="text-xs" style={{ color: 'var(--color-accent)' }}>Live</span>
+        {/* Right Sidebar — Real Activity & AI Insights */}
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Live Activity Feed</CardTitle>
+              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            </CardHeader>
+            <div className="space-y-3">
+              {realActivities.length === 0 ? (
+                <div className="text-center py-6 text-xs text-white/40">
+                  <Activity size={18} className="mx-auto mb-2 opacity-50" />
+                  Live events will appear as calls complete
+                </div>
+              ) : (
+                realActivities.slice(0, 6).map((item) => (
+                  <div key={item.id} className="flex items-start gap-3 text-xs">
+                    <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                      ✓
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white font-medium">{item.text}</p>
+                      <p className="text-white/40 text-[10px]">{item.time}</p>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
-          </CardHeader>
-          <div className="space-y-3 -mx-5 px-5">
-            {mockActivity.map((item, i) => (
-              <div
-                key={item.id}
-                className="flex gap-3 py-2 animate-fade-in-up"
-                style={{ animationDelay: `${i * 60}ms`, borderTop: i > 0 ? '1px solid var(--color-border)' : 'none' }}
-              >
-                <ActivityIcon type={item.type} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs leading-snug" style={{ color: 'var(--color-text-secondary)' }}>{item.text}</p>
-                  <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{item.time}</p>
+          </Card>
+
+          {/* Mass Drips Catalog Snapshot */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Active Catalog in Agent Memory</CardTitle>
+            </CardHeader>
+            <div className="space-y-2.5 text-xs">
+              {[
+                { name: 'Acid Wash Oversized Tee', price: '₹1,299', stock: 'In Stock (M, L, XL)' },
+                { name: 'Heavyweight Boxy Hoodie', price: '₹1,899', stock: 'In Stock (380 GSM)' },
+                { name: 'Tactical Cargo Joggers', price: '₹2,499', stock: 'In Stock (Olive)' },
+              ].map((p) => (
+                <div key={p.name} className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/10">
+                  <div>
+                    <p className="text-white font-medium">{p.name}</p>
+                    <p className="text-white/40 text-[10px]">{p.stock}</p>
+                  </div>
+                  <span className="font-bold text-emerald-400">{p.price}</span>
                 </div>
-              </div>
-            ))}
-          </div>
-        </Card>
+              ))}
+            </div>
+          </Card>
+        </div>
       </div>
 
-      {/* Bottom Row: Quick Actions + Sentiment */}
-      <div className="grid md:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-          </CardHeader>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { icon: Mic, label: 'New Voice Call', color: '#00e599', action: () => showToast('info', 'Launching call simulator...') },
-              { icon: Zap, label: 'Launch Campaign', color: '#6366f1', action: () => navigate('/campaigns') },
-              { icon: Phone, label: 'Import Leads', color: '#f59e0b', action: () => showToast('success', '48 leads imported!', 'From Shopify export') },
-              { icon: Activity, label: 'View Analytics', color: '#00e599', action: () => navigate('/analytics') },
-            ].map(({ icon: Icon, label, color, action }) => (
-              <button
-                key={label}
-                onClick={action}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl hover:bg-white/5 transition-all duration-150 hover:-translate-y-0.5 group"
-                style={{ border: '1px solid var(--color-border)' }}
-              >
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform"
-                  style={{ background: `${color}20` }}
-                >
-                  <Icon size={18} style={{ color }} />
-                </div>
-                <span className="text-xs font-medium text-center" style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
-              </button>
-            ))}
-          </div>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Customer Sentiment</CardTitle>
-            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Last 500 calls</span>
-          </CardHeader>
-          <div className="space-y-3">
-            {[
-              { label: 'Very Positive', pct: 38, color: '#00e599' },
-              { label: 'Positive', pct: 32, color: '#34d399' },
-              { label: 'Neutral', pct: 18, color: '#6366f1' },
-              { label: 'Negative', pct: 9, color: '#f59e0b' },
-              { label: 'Very Negative', pct: 3, color: '#ef4444' },
-            ].map(({ label, pct, color }) => (
-              <div key={label} className="flex items-center gap-3">
-                <p className="text-xs w-24 shrink-0" style={{ color: 'var(--color-text-muted)' }}>{label}</p>
-                <div className="flex-1 h-1.5 rounded-full" style={{ background: 'var(--color-bg-elevated)' }}>
-                  <div
-                    className="h-1.5 rounded-full transition-all duration-500"
-                    style={{ width: `${pct}%`, background: color }}
-                  />
-                </div>
-                <p className="text-xs font-semibold w-8 text-right" style={{ color }}>{pct}%</p>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--color-border)' }}>
-            <p className="text-xl font-bold" style={{ color: 'var(--color-accent)', fontFamily: 'var(--font-display)' }}>
-              78% Positive
-            </p>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-              Based on real-time LLM post-call evaluation
-            </p>
-          </div>
-        </Card>
-      </div>
+      <LiveCallModal
+        isOpen={callModalOpen}
+        onClose={() => {
+          setCallModalOpen(false);
+          refreshData();
+        }}
+        onCallCompleted={() => refreshData()}
+        leadName={selectedLead.name}
+        leadPhone={selectedLead.phone}
+        brandName="Mass Drips"
+      />
     </div>
   );
 }

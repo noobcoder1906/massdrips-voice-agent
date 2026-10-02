@@ -106,25 +106,48 @@ class KokoroTTS:
         return cls._kokoro
 
     @classmethod
+    def _resolve_voice(cls, voice: str):
+        """Resolve voice name or custom cloned voice style ndarray."""
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        custom_npy = os.path.join(base_dir, "clones", "my_voice_style.npy")
+        
+        if voice in ["my_voice", "clone", "custom"] or (voice in ["af_heart", "hm_omega"] and os.path.exists(custom_npy)):
+            if os.path.exists(custom_npy):
+                try:
+                    return np.load(custom_npy)
+                except Exception as e:
+                    logger.warning(f"Could not load custom voice style: {e}")
+        
+        return voice
+
+    @classmethod
+    def _clean_text(cls, text: str) -> str:
+        t = text.replace("₹", " rupees ").replace("Rs.", " rupees ").replace("Rs ", " rupees ")
+        t = t.replace("*", "").replace("#", "").replace("_", "").replace("`", "")
+        return t.strip()
+
+    @classmethod
     def synthesize_to_pcm(cls, text: str, voice: str = TTS_VOICE, speed: float = TTS_SPEED) -> bytes:
         """
         Synthesize text → raw 16kHz 16-bit mono PCM bytes.
 
         Args:
             text:  Clean, voice-ready text string (single sentence preferred).
-            voice: Kokoro voice ID.
+            voice: Kokoro voice ID or custom clone identifier.
             speed: Speech rate multiplier.
 
         Returns:
             Raw PCM bytes (16kHz, 16-bit, mono) ready for WebSocket delivery.
         """
-        if not text.strip():
+        clean = cls._clean_text(text)
+        if not clean:
             return b""
 
         kokoro = cls.get_engine()
+        resolved_voice = cls._resolve_voice(voice)
 
         # Kokoro returns (samples, sample_rate)
-        samples, sr = kokoro.create(text, voice=voice, speed=speed, lang="en-us")
+        samples, sr = kokoro.create(clean, voice=resolved_voice, speed=speed, lang="en-us")
         samples = np.array(samples, dtype=np.float32)
 
         # Resample to 16kHz to match our pipeline
@@ -137,6 +160,21 @@ class KokoroTTS:
             f"({len(pcm_bytes) / (TARGET_SAMPLE_RATE * 2) * 1000:.0f}ms)"
         )
         return pcm_bytes
+
+    @classmethod
+    def synthesize_to_wav(cls, text: str, voice: str = "my_voice", speed: float = TTS_SPEED) -> bytes:
+        """Synthesize text → studio WAV bytes with custom cloned voice cadence."""
+        clean = cls._clean_text(text)
+        if not clean:
+            return b""
+        kokoro = cls.get_engine()
+        resolved_voice = cls._resolve_voice(voice)
+        samples, sr = kokoro.create(clean, voice=resolved_voice, speed=speed, lang="en-us")
+        samples = np.array(samples, dtype=np.float32)
+
+        buf = io.BytesIO()
+        sf.write(buf, samples, sr, format="WAV")
+        return buf.getvalue()
 
 
 async def tts_worker(

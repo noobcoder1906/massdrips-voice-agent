@@ -5,12 +5,12 @@ import { StatusBadge } from '../components/Badge';
 import Button from '../components/Button';
 import Modal from '../components/Modal';
 import { useToast } from '../components/Toast';
-import { mockCampaigns } from '../data/mockData';
+import { massDripsCampaigns } from '../data/realStore';
 
-type Campaign = typeof mockCampaigns[0];
+type Campaign = typeof massDripsCampaigns[0];
 
 export default function Campaigns() {
-  const [campaigns, setCampaigns] = useState(mockCampaigns);
+  const [campaigns, setCampaigns] = useState(massDripsCampaigns);
   const [modalOpen, setModalOpen] = useState(false);
   const [detailModal, setDetailModal] = useState<Campaign | null>(null);
   const [newCampaign, setNewCampaign] = useState({ name: '', product: '', leads: '' });

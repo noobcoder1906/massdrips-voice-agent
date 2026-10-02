@@ -1,0 +1,112 @@
+{
+  "brand": "MASS DRIPS",
+  "website": "https://www.massdrips.shop/",
+  "tagline": "Wear The Mass | Cinematic Streetwear",
+  "origin": "Made in Chennai, India",
+  "fabric": "240 GSM Heavyweight Premium French Terry & Cotton",
+  "shipping": "3-4 Days Pan-India Delivery",
+  "payment": "COD (Cash on Delivery) + UPI",
+  "collections": [
+    {
+      "name": "Kollywood",
+      "styles": 15,
+      "fromPrice": 699,
+      "desc": "Tamil cinema mass icons & cult dialogues"
+    },
+    {
+      "name": "Bollywood",
+      "styles": 5,
+      "fromPrice": 699,
+      "desc": "Hindi cinema legends & cult classics"
+    },
+    {
+      "name": "Tollywood",
+      "styles": 3,
+      "fromPrice": 699,
+      "desc": "Telugu cinema hero statements"
+    },
+    {
+      "name": "Love Edition",
+      "styles": 2,
+      "fromPrice": 799,
+      "desc": "Romance & aesthetic cinematic pieces"
+    },
+    {
+      "name": "Mass Edition",
+      "styles": 1,
+      "fromPrice": 1499,
+      "desc": "Flagship signature drops"
+    },
+    {
+      "name": "Heavyweights",
+      "styles": 4,
+      "fromPrice": 1499,
+      "desc": "240 GSM oversized hoodies & sweatshirts"
+    }
+  ],
+  "products": [
+    {
+      "id": "MD001",
+      "name": "Jana Nayagan \u2014 Crowd Edition",
+      "price": 699,
+      "category": "Premium Oversized Tee",
+      "color": "Black",
+      "gsm": "240 GSM",
+      "badge": "HOT"
+    },
+    {
+      "id": "MD002",
+      "name": "In The Shadows We Forge",
+      "price": 1499,
+      "category": "Oversized Hoodie",
+      "color": "Black",
+      "gsm": "240 GSM",
+      "badge": "BESTSELLER"
+    },
+    {
+      "id": "MD003",
+      "name": "Main Rukta Nahi Hoon",
+      "price": 1199,
+      "category": "Sweatshirt",
+      "color": "Black",
+      "gsm": "240 GSM",
+      "badge": "NEW"
+    },
+    {
+      "id": "MD004",
+      "name": "Main Rukta Nahi Hoon",
+      "price": 699,
+      "category": "Oversized Tee",
+      "color": "Black",
+      "gsm": "240 GSM",
+      "badge": "TRENDING"
+    },
+    {
+      "id": "MD005",
+      "name": "Kismat Der Se Aye",
+      "price": 699,
+      "category": "Cracked Wall Tee",
+      "color": "Black",
+      "gsm": "240 GSM",
+      "badge": "TRENDING"
+    },
+    {
+      "id": "MD006",
+      "name": "Kismat Der Se Aye",
+      "price": 1599,
+      "category": "Cracked Hoodie \u2014 Melange Grey",
+      "color": "Melange Grey",
+      "gsm": "240 GSM",
+      "badge": "NEW"
+    },
+    {
+      "id": "MD007",
+      "name": "Kismat Der Se Aye",
+      "price": 1599,
+      "category": "Cracked Hoodie \u2014 White",
+      "color": "White",
+      "gsm": "240 GSM",
+      "badge": "HOT"
+    }
+  ]
+}

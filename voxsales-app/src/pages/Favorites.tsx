@@ -4,8 +4,6 @@ import Card from '../components/Card';
 import { StatusBadge } from '../components/Badge';
 import Button from '../components/Button';
 import { useToast } from '../components/Toast';
-import { mockFavorites } from '../data/mockData';
-
 const typeIcons = {
   campaign: FolderKanban,
   lead: Users,
@@ -19,7 +17,7 @@ const typeColors = {
 };
 
 export default function Favorites() {
-  const [items, setItems] = useState(mockFavorites);
+  const [items, setItems] = useState<any[]>([]);
   const { showToast } = useToast();
 
   const remove = (id: string, name: string) => {

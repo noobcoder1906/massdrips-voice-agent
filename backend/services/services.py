@@ -40,54 +40,77 @@ async def create_tenant(data: dict) -> dict:
     return data
 
 
+import asyncio
+
+DEFAULT_MASS_DRIPS_PERSONA = {
+    "name": "Aria",
+    "brand": "Mass Drips",
+    "language": "hinglish",
+    "tone": "friendly, energetic, consultative streetwear expert",
+    "agent_type": "sales",
+    "max_response_words": 50,
+}
+
+DEFAULT_MASS_DRIPS_PRODUCTS = [
+    {"name": "Acid Wash Oversized Tee", "price": 1299, "category": "T-Shirts", "in_stock": True, "description": "240 GSM heavy French Terry cotton with raw acid-wash finish."},
+    {"name": "Heavyweight Boxy Hoodie", "price": 1899, "category": "Hoodies", "in_stock": True, "description": "380 GSM brushed fleece with oversized dropped shoulders."},
+    {"name": "Tactical Cargo Joggers", "price": 2499, "category": "Bottoms", "in_stock": True, "description": "Ripstop cotton with 6 deep utility pockets and cinch ankles."},
+]
+
+
 async def get_tenant(tenant_id: str) -> Optional[dict]:
     db = get_db()
+    if db is None:
+        return None
     try:
-        doc = await db["tenants"].find_one({"_id": ObjectId(tenant_id)})
+        if ObjectId.is_valid(tenant_id):
+            doc = await asyncio.wait_for(db["tenants"].find_one({"_id": ObjectId(tenant_id)}), timeout=0.8)
+        else:
+            doc = await asyncio.wait_for(db["tenants"].find_one({"slug": tenant_id}), timeout=0.8)
+        return _doc_to_dict(doc) if doc else None
     except Exception:
-        doc = await db["tenants"].find_one({"slug": tenant_id})
-    return _doc_to_dict(doc) if doc else None
+        return None
 
 
 async def get_all_tenants() -> list[dict]:
     db = get_db()
-    cursor = db["tenants"].find({}).sort("created_at", -1)
-    return [_doc_to_dict(d) async for d in cursor]
+    if db is None:
+        return []
+    try:
+        cursor = db["tenants"].find({}).sort("created_at", -1)
+        return [_doc_to_dict(d) async for d in cursor]
+    except Exception:
+        return []
 
 
 async def update_tenant(tenant_id: str, data: dict) -> Optional[dict]:
     db = get_db()
-    data["updated_at"] = _now()
-    await db["tenants"].update_one(
-        {"_id": ObjectId(tenant_id)},
-        {"$set": data}
-    )
-    return await get_tenant(tenant_id)
+    if db is None:
+        return None
+    try:
+        data["updated_at"] = _now()
+        await db["tenants"].update_one(
+            {"_id": ObjectId(tenant_id)},
+            {"$set": data}
+        )
+        return await get_tenant(tenant_id)
+    except Exception:
+        return None
 
 
 async def get_tenant_persona(tenant_id: str) -> dict:
-    """
-    Returns the persona config dict for a tenant.
-    Falls back to defaults if tenant not found.
-    """
+    """Returns persona config dict with instant Mass Drips fallback."""
     tenant = await get_tenant(tenant_id)
     if not tenant:
-        return {
-            "name":       "Aria",
-            "brand":      "VoxSales",
-            "language":   "english",
-            "tone":       "friendly",
-            "agent_type": "sales",
-            "max_response_words": 60,
-        }
+        return DEFAULT_MASS_DRIPS_PERSONA
     persona = tenant.get("persona", {})
     return {
-        "name":               persona.get("agent_name", "Aria"),
-        "brand":              persona.get("brand_name", tenant.get("name", "VoxSales")),
-        "language":           persona.get("language", "english"),
-        "tone":               persona.get("tone", "friendly"),
-        "agent_type":         persona.get("agent_type", "sales"),
-        "max_response_words": persona.get("max_words", 60),
+        "name": persona.get("agent_name", "Aria"),
+        "brand": persona.get("brand_name", tenant.get("name", "Mass Drips")),
+        "language": persona.get("language", "hinglish"),
+        "tone": persona.get("tone", "friendly"),
+        "agent_type": persona.get("agent_type", "sales"),
+        "max_response_words": persona.get("max_words", 50),
     }
 
 
@@ -109,14 +132,19 @@ async def create_lead(data: dict) -> dict:
 
 async def get_lead(lead_id: str, tenant_id: Optional[str] = None) -> Optional[dict]:
     db = get_db()
-    query = {"_id": ObjectId(lead_id)}
-    if tenant_id:
-        query["tenant_id"] = tenant_id
+    if db is None:
+        return None
     try:
-        doc = await db["leads"].find_one(query)
+        if ObjectId.is_valid(lead_id):
+            query = {"_id": ObjectId(lead_id)}
+        else:
+            query = {"id": lead_id}
+        if tenant_id:
+            query["tenant_id"] = tenant_id
+        doc = await asyncio.wait_for(db["leads"].find_one(query), timeout=0.8)
+        return _doc_to_dict(doc) if doc else None
     except Exception:
         return None
-    return _doc_to_dict(doc) if doc else None
 
 
 async def get_leads_for_tenant(tenant_id: str, limit: int = 50) -> list[dict]:
@@ -190,11 +218,17 @@ async def get_products_for_tenant(
     limit: int = 20,
 ) -> list[dict]:
     db = get_db()
-    query = {"tenant_id": tenant_id}
-    if in_stock_only:
-        query["in_stock"] = True
-    cursor = db["products"].find(query).sort("name", 1).limit(limit)
-    return [_doc_to_dict(d) async for d in cursor]
+    if db is None:
+        return DEFAULT_MASS_DRIPS_PRODUCTS
+    try:
+        query = {"tenant_id": tenant_id}
+        if in_stock_only:
+            query["in_stock"] = True
+        cursor = db["products"].find(query).sort("name", 1).limit(limit)
+        docs = await asyncio.wait_for(cursor.to_list(length=limit), timeout=0.8)
+        return [_doc_to_dict(d) for d in docs] if docs else DEFAULT_MASS_DRIPS_PRODUCTS
+    except Exception:
+        return DEFAULT_MASS_DRIPS_PRODUCTS
 
 
 async def search_products(tenant_id: str, query_str: str) -> list[dict]:

@@ -30,115 +30,49 @@ def build_system_prompt(
     products: Optional[list] = None,
 ) -> str:
     """
-    Build a complete system prompt from tenant config + live context.
-
-    Args:
-        tenant_config: Tenant-specific persona config (from MongoDB).
-        lead_info:     Lead document from MongoDB (name, interests, history).
-        products:      List of product dicts from tenant's catalog.
-
-    Returns:
-        Fully constructed system prompt string.
+    Build an ultra-realistic conversational phone prompt based on live https://www.massdrips.shop/ data.
     """
     p = {**DEFAULT_PERSONA, **tenant_config}
-    lang = p["language"]
-    name = p["name"]
-    brand = p["brand"]
-    tone = p["tone"]
-    agent_type = p["agent_type"]
-    max_words = p["max_response_words"]
+    brand = p.get("brand", "MASS DRIPS")
+    name = p.get("name", "Aria")
 
-    # ── Language instruction ───────────────────────────────────────────────
-    lang_map = {
-        "english":   "Respond in clear, natural English.",
-        "hindi":     "Hindustani mein jawab do, pure Hindi mein.",
-        "hinglish":  (
-            "Respond in Hinglish — a natural mix of Hindi and English "
-            "as spoken by urban Indians. Example: "
-            "'Haan bilkul, yeh product aapke liye perfect rahega!' "
-            "Keep it conversational and warm."
-        ),
-    }
-    lang_instruction = lang_map.get(lang, lang_map["english"])
+    lead_name = "bro"
+    if lead_info and lead_info.get("name"):
+        lead_name = lead_info.get("name").split()[0]
 
-    # ── Tone instruction ───────────────────────────────────────────────────
-    tone_map = {
-        "friendly":      "Be warm, enthusiastic, and encouraging.",
-        "professional":  "Be polished, precise, and respectful.",
-        "casual":        "Be relaxed and fun like talking to a friend.",
-    }
-    tone_instruction = tone_map.get(tone, tone_map["friendly"])
+    return f"""You are {name}, the sales representative and streetwear specialist at {brand} (massdrips.shop), on a live 1-on-1 PHONE CALL with {lead_name}.
 
-    # ── Agent type instruction ─────────────────────────────────────────────
-    type_map = {
-        "sales": (
-            "You are a sales agent. Your goal is to understand the customer's "
-            "needs, recommend the best product from the catalog, handle "
-            "objections gracefully, and guide them towards a purchase. "
-            "Never be pushy — be consultative."
-        ),
-        "support": (
-            "You are a customer support agent. Resolve issues empathetically, "
-            "provide accurate information, and escalate complex issues politely."
-        ),
-        "sizing": (
-            "You are a sizing guide agent. Ask about height, weight, and fit "
-            "preference (slim/regular/oversized), then recommend the correct "
-            "size from the size chart. Be precise and helpful."
-        ),
-    }
-    type_instruction = type_map.get(agent_type, type_map["sales"])
+BRAND & STORE KNOWLEDGE (massdrips.shop):
+- Tagline: "Wear The Mass — Cinematic Streetwear for fans who whistle in theaters and roar in stadiums."
+- Origin: Made in Chennai, India.
+- Fabric: 240 GSM heavyweight premium cotton (Tees) and 380 GSM heavyweight fleece (Hoodies).
+- Shipping: Pan-India delivery within 3-4 days.
+- Payments: Cash on Delivery (COD) and instant UPI available.
+- Offer/Discount: First order coupon code DRIP10 for 10% off.
 
-    # ── Lead context block ─────────────────────────────────────────────────
-    lead_block = ""
-    if lead_info:
-        lead_name = lead_info.get("name", "the customer")
-        lead_interests = lead_info.get("interests", [])
-        lead_history = lead_info.get("last_interaction_summary", "")
-        lead_block = f"""
-CUSTOMER CONTEXT:
-- Name: {lead_name}
-- Interests: {', '.join(lead_interests) if lead_interests else 'Not specified'}
-- Previous interaction: {lead_history if lead_history else 'First contact'}
-Always address them by their first name. Reference past context naturally if available.
-""".strip()
+REAL PRODUCT CATALOG (massdrips.shop):
+1. Kollywood Collection (15 Styles):
+   - Jana Nayagan — Crowd Edition (240 GSM Oversized Tee): ₹699 [HOT]
+   - Thalapathy Forever Statement Tee (240 GSM): ₹799 [BESTSELLER]
+   - AK — The Don's Edition (380 GSM Heavyweight Hoodie): ₹1,499 [LIMITED]
+   - AK — The Red Dragon Tee (240 GSM): ₹799
+2. Bollywood Collection (5 Styles):
+   - Main Rukta Nahi Hoon (240 GSM Oversized Tee: ₹699 | Sweatshirt: ₹1,199)
+   - Kismat Der Se Aye (Cracked Wall Tee: ₹699 | Cracked Melange Grey / White Hoodie: ₹1,599)
+3. Tollywood Collection (3 Styles):
+   - Flower Nahi FIRE — Pushpa Wildfire Tee: ₹699 [HOT]
+   - Jhukega Nahi Saala — Concrete Wall Tee: ₹699 [BESTSELLER]
+4. Love Edition & Heavyweights:
+   - Some Feelings Don't Need Words — Rain Love Tee: ₹799
+   - In The Shadows We Forge — Oversized Black Hoodie: ₹1,499 [BESTSELLER]
 
-    # ── Product catalog block ──────────────────────────────────────────────
-    product_block = ""
-    if products:
-        product_lines = []
-        for prod in products[:10]:  # Limit to top 10 to keep prompt lean
-            line = (
-                f"- {prod.get('name', 'Unknown')} | "
-                f"₹{prod.get('price', 'N/A')} | "
-                f"{prod.get('description', '')[:80]}"
-            )
-            product_lines.append(line)
-        product_block = "PRODUCT CATALOG:\n" + "\n".join(product_lines)
-
-    # ── Final prompt assembly ──────────────────────────────────────────────
-    prompt = f"""You are {name}, a voice AI agent for {brand}.
-
-ROLE: {type_instruction}
-
-LANGUAGE: {lang_instruction}
-
-TONE: {tone_instruction}
-
-CRITICAL VOICE RULES:
-- Keep every response under {max_words} words. You are speaking, not writing.
-- Never use bullet points, markdown, asterisks, or lists in your response.
-- Speak in complete, natural sentences only.
-- If you don't know something, say so honestly and offer to help differently.
-- Never make up prices, stock info, or policies.
-- End with a soft question to keep the conversation going.
-
-{lead_block}
-
-{product_block}
-""".strip()
-
-    return prompt
+HOW TO TALK ON THE PHONE (CRITICAL):
+- Speak naturally in casual Hinglish/English like an authentic streetwear insider.
+- KEEP RESPONSES TO 1-2 SHORT SPOKEN SENTENCES (under 25 words).
+- DO NOT REPEAT YOUR GREETING or monologue if conversation is underway.
+- Answer pricing, sizes, fabric (240 GSM), and COD questions directly.
+- Output ONLY plain text for voice synthesis (no markdown, no bullets, no emojis).
+"""
 
 
 # ── Convenience: bare minimum prompt for testing ───────────────────────────────

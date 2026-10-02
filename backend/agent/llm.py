@@ -22,30 +22,76 @@ import asyncio
 import logging
 import os
 from typing import AsyncGenerator
+from dotenv import load_dotenv
 
-import ollama
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq").lower()
 OLLAMA_HOST  = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL   = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+
+
+class GroqLLM:
+    """Async streaming Groq Cloud LLM client for ultra-low-latency voice responses (<100ms)."""
+
+    def __init__(self):
+        from groq import AsyncGroq
+        self._client = AsyncGroq(api_key=GROQ_API_KEY)
+        logger.info(f"GroqLLM initialized with model={GROQ_MODEL}")
+
+    async def check_connection(self) -> bool:
+        return bool(GROQ_API_KEY)
+
+    async def stream_response(
+        self,
+        system_prompt: str,
+        conversation_history: list[dict],
+        user_message: str,
+    ) -> AsyncGenerator[str, None]:
+        messages = (
+            [{"role": "system", "content": system_prompt}]
+            + conversation_history
+            + [{"role": "user", "content": user_message}]
+        )
+
+        logger.info(
+            f"Groq LLM request: model={GROQ_MODEL}, "
+            f"history_len={len(conversation_history)}, "
+            f"user='{user_message[:60]}...'"
+        )
+
+        try:
+            stream = await self._client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=messages,
+                stream=True,
+                temperature=0.6,
+                max_tokens=400,
+            )
+            async for chunk in stream:
+                token = chunk.choices[0].delta.content or ""
+                if token:
+                    yield token
+        except Exception as e:
+            logger.error(f"Groq streaming error: {e}")
+            yield "Sorry, I'm having trouble connecting. Could you say that again?"
 
 
 class OllamaLLM:
-    """
-    Thin async wrapper around the Ollama Python client.
-    Uses streaming so we get tokens as fast as possible
-    (critical for low-latency TTS in Phase 4).
-    """
+    """Async wrapper around local Ollama client."""
 
     def __init__(self):
+        import ollama
         self._client = ollama.AsyncClient(host=OLLAMA_HOST)
         logger.info(
             f"OllamaLLM initialized: host={OLLAMA_HOST}, model={OLLAMA_MODEL}"
         )
 
     async def check_connection(self) -> bool:
-        """Ping Ollama server — returns True if reachable."""
         try:
             await self._client.list()
             return True
@@ -59,17 +105,6 @@ class OllamaLLM:
         conversation_history: list[dict],
         user_message: str,
     ) -> AsyncGenerator[str, None]:
-        """
-        Stream a response from Ollama token by token.
-
-        Args:
-            system_prompt:         Full system prompt (tenant persona + context).
-            conversation_history:  List of prior messages [{"role":..., "content":...}].
-            user_message:          Latest transcript from STT.
-
-        Yields:
-            Text token strings as they arrive from Ollama.
-        """
         messages = (
             [{"role": "system", "content": system_prompt}]
             + conversation_history
@@ -77,7 +112,7 @@ class OllamaLLM:
         )
 
         logger.info(
-            f"LLM request: model={OLLAMA_MODEL}, "
+            f"Ollama LLM request: model={OLLAMA_MODEL}, "
             f"history_len={len(conversation_history)}, "
             f"user='{user_message[:60]}...'"
         )
@@ -94,6 +129,14 @@ class OllamaLLM:
         except Exception as e:
             logger.error(f"Ollama streaming error: {e}")
             yield "Sorry, I'm having trouble responding right now. Can you repeat that?"
+
+
+def get_llm_engine():
+    """Factory to get the configured LLM engine."""
+    provider = os.getenv("LLM_PROVIDER", "groq").lower()
+    if provider == "groq" and GROQ_API_KEY:
+        return GroqLLM()
+    return OllamaLLM()
 
 
 async def llm_worker(
@@ -117,7 +160,7 @@ async def llm_worker(
         tenant_id:        For logging.
         lead_id:          For logging.
     """
-    llm = OllamaLLM()
+    llm = get_llm_engine()
     conversation_history: list[dict] = []
 
     logger.info(f"LLM worker started [{tenant_id}/{lead_id}]")
