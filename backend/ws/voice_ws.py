@@ -1,52 +1,80 @@
 """
 backend/ws/voice_ws.py
 
-WebSocket endpoint for real-time AI voice conversation — Phase 4.
+WebSocket handler for the real-time voice pipeline.
 
-Full pipeline per session:
-    Client (phone/browser)
-        │  binary PCM frames (16kHz, 16-bit, mono)
-        ▼
-    VoiceActivityDetector   [VAD — Silero ONNX]
-        │  complete utterance bytes
-        ▼
-    stt_queue ──► stt_worker      [Faster-Whisper STT]
-        │  {"transcript": str}
-        ▼
-    transcript_queue ──► llm_worker  [Ollama streaming LLM]
-        │  {"response": str}
-        ▼
-    response_queue ──► tts_worker    [Kokoro ONNX TTS]
-        │  raw PCM bytes (per sentence — streaming)
-        ▼
-    audio_queue ──► WebSocket binary frames back to client
-        │
-    Client plays audio → user hears AI voice response
+ARCHITECTURE OVERVIEW (for future agents):
+==========================================
+This is the entry point for all live voice calls. Each WebSocket connection
+represents one active call session between the AI agent and one lead.
+
+Connection URL pattern:
+  ws://localhost:8000/ws/voice/{tenant_id}/{lead_id}
+
+Pipeline (all stages run as concurrent asyncio Tasks per session):
+
+  Client (browser/Twilio)
+      |-- binary frames (raw 16kHz 16-bit mono PCM) -->
+  [VAD: Silero ONNX]        -- detects speech boundaries
+      |-- utterance PCM blob -->
+  [STT: Faster-Whisper]     -- transcribes speech to text
+      |-- transcript text -->
+  [Laya Router]             -- intent classification (in llm_worker)
+      |-- fast bypass / LLM call -->
+  [LLM: Groq / Ollama]      -- generates response (streaming early-emit)
+      |-- response sentences -->
+  [TTS: Kokoro / Edge-TTS]  -- synthesizes each sentence to PCM
+      |-- PCM chunks -->
+      |-- binary frames --> Client
+      |-- JSON events   --> Client (transcript, agent_text, audio_start/end)
+
+Session lifecycle:
+  1. WebSocket connect -> build system prompt from DB
+  2. Start 4 async pipeline workers (STT, LLM, TTS, audio sender)
+  3. Receive loop: binary audio -> VAD, text -> direct transcript queue
+  4. On disconnect: graceful shutdown of all workers in pipeline order
+  5. Post-call: score lead, update MongoDB, trigger follow-up message
+
+JSON message protocol (server -> client):
+  {"type": "connected", "session_id": "..."}    -- on connect
+  {"type": "transcript", "text": "..."}          -- user speech recognized
+  {"type": "agent_text", "text": "..."}          -- agent about to speak
+  {"type": "audio_start"}                        -- audio stream starting
+  {"type": "audio_end"}                          -- audio stream complete
+  {"type": "call_ended", "score": 75, ...}       -- on disconnect (post-call)
+  {"type": "ack", "received": {...}}             -- control message receipt
+
+Binary message protocol (server -> client):
+  Raw 16kHz 16-bit mono PCM bytes, streamed in 640-byte (20ms) chunks.
+  Client must buffer and play these sequentially.
 """
 
 import asyncio
 import json
 import logging
-import os
+import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from backend.voice.vad import VoiceActivityDetector
-from backend.voice.stt import stt_worker
-from backend.voice.tts import tts_worker
 from backend.agent.llm import llm_worker
-from backend.agent.prompts import build_system_prompt, DEFAULT_PERSONA
-from backend.services.services import (
+from backend.agent.prompts import build_system_prompt
+from backend.services import (
     get_tenant_persona,
     get_lead_context,
     get_products_for_tenant,
+    update_lead_after_call,
 )
+from backend.voice.stt import stt_worker
+from backend.voice.tts import tts_worker
+from backend.voice.vad import VoiceActivityDetector
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Chunk size for streaming audio back (20ms @ 16kHz = 640 bytes)
+# 20ms of 16kHz 16-bit mono PCM = 640 bytes per chunk
+# Smaller chunks = lower perceived latency but more WS frames overhead
 AUDIO_CHUNK_SIZE = 640
 
 
@@ -57,50 +85,88 @@ async def voice_websocket(
     lead_id: str,
 ):
     """
-    Multi-tenant WebSocket endpoint — Phase 4 (Full Voice Pipeline).
+    Main WebSocket handler for a live AI voice call session.
 
-    Incoming:  Binary PCM audio frames from client
-    Outgoing:  Binary PCM audio frames (AI voice) + JSON event messages
+    Args:
+        tenant_id: MongoDB ObjectId of the tenant (brand using VoxSales).
+        lead_id:   MongoDB ObjectId of the lead being called.
 
-    JSON messages sent to client:
-      {"type": "transcript",      "text": "..."}  — what user said
-      {"type": "agent_text",      "text": "..."}  — what agent will say
-      {"type": "audio_start"}                      — audio is about to stream
-      {"type": "audio_end"}                        — audio stream complete
-      {"type": "ack",             "received": ...} — control message ack
+    The handler:
+      1. Accepts the connection and sends a "connected" event
+      2. Builds the system prompt from DB (tenant config + lead context + products)
+      3. Spins up 4 async pipeline workers
+      4. Runs the main receive loop (audio bytes or text commands)
+      5. On disconnect: tears down pipeline and runs post-call actions
     """
-    await websocket.accept()
-    logger.info(f"[{tenant_id}/{lead_id}] WebSocket connected.")
+    session_id = str(uuid.uuid4())[:8]
+    call_transcript: list[dict] = []   # accumulated for post-call scoring
 
-    # ── Build tenant system prompt ──────────────────────────────────────────
-    tenant_config = await get_tenant_persona(tenant_id)
-    lead_info     = await get_lead_context(lead_id, tenant_id)
-    products      = await get_products_for_tenant(tenant_id, in_stock_only=True, limit=10)
+    await websocket.accept()
+    logger.info("[%s] WebSocket connected for %s/%s", session_id, tenant_id, lead_id)
+
+    # ── Send connected event ─────────────────────────────────────────────────
+    await websocket.send_text(json.dumps({
+        "type":       "connected",
+        "session_id": session_id,
+        "timestamp":  datetime.utcnow().isoformat(),
+    }))
+
+    # ── Build system prompt from DB ──────────────────────────────────────────
+    # These DB calls happen once per session at connect time.
+    # The prompt is static for the full call duration (Laya hints are appended
+    # per-turn inside llm_worker without rebuilding from DB).
+    try:
+        tenant_config = await get_tenant_persona(tenant_id)
+        lead_info     = await get_lead_context(lead_id, tenant_id)
+        products      = await get_products_for_tenant(tenant_id, in_stock_only=True, limit=10)
+    except Exception as e:
+        logger.warning("[%s] DB lookup failed (%s) -- using defaults", session_id, e)
+        tenant_config = {}
+        lead_info     = {}
+        products      = []
+
     system_prompt = build_system_prompt(
         tenant_config=tenant_config,
         lead_info=lead_info,
         products=products,
     )
     logger.info(
-        f"[{tenant_id}/{lead_id}] System prompt built ({len(system_prompt)} chars)"
+        "[%s] System prompt built: %d chars, lead=%s",
+        session_id, len(system_prompt),
+        lead_info.get("name", "unknown") if lead_info else "unknown",
     )
 
-    # ── Per-session async queues ────────────────────────────────────────────
-    stt_queue        = asyncio.Queue()  # VAD  → STT worker
-    transcript_queue = asyncio.Queue()  # STT  → LLM worker
-    response_queue   = asyncio.Queue()  # LLM  → TTS worker
-    audio_queue      = asyncio.Queue()  # TTS  → WebSocket audio sender
+    # ── Per-session async queues (pipeline connectors) ───────────────────────
+    # Each queue is the "pipe" between two pipeline stages.
+    # Sentinels (None) propagate through the pipeline in order on disconnect.
+    stt_queue        = asyncio.Queue()   # VAD     --> STT worker
+    transcript_queue = asyncio.Queue()   # STT     --> LLM worker
+    response_queue   = asyncio.Queue()   # LLM     --> TTS worker
+    audio_queue      = asyncio.Queue()   # TTS     --> audio sender
 
-    # ── VAD instance ────────────────────────────────────────────────────────
+    # ── VAD instance ─────────────────────────────────────────────────────────
+    # One SileroVAD instance per session (maintains per-call LSTM state).
     vad = VoiceActivityDetector(output_queue=stt_queue)
 
-    # ── Background workers ──────────────────────────────────────────────────
+    # ── Background pipeline workers ──────────────────────────────────────────
+        # Outbound live call opening greeting
+    lead_name = lead_info.get("name", "Rahul") if lead_info else "Rahul"
+    if not lead_name or lead_name in ("Customer", "there", "unknown"):
+        lead_name = "Rahul"
+    else:
+        lead_name = lead_name.split()[0]
+    agent_name = tenant_config.get("name", "Aria") if tenant_config else "Aria"
+    brand_name = tenant_config.get("brand", "Mass Drips") if tenant_config else "Mass Drips"
+    greeting_text = f"Hey {lead_name}! This is {agent_name} calling from {brand_name}. How are you doing today?"
+
     stt_task = asyncio.create_task(
         stt_worker(
             stt_queue=stt_queue,
             transcript_queue=transcript_queue,
             tenant_id=tenant_id,
             lead_id=lead_id,
+            websocket=websocket,
+            call_transcript=call_transcript,
         )
     )
 
@@ -111,6 +177,7 @@ async def voice_websocket(
             system_prompt=system_prompt,
             tenant_id=tenant_id,
             lead_id=lead_id,
+            initial_greeting=greeting_text,
         )
     )
 
@@ -123,92 +190,101 @@ async def voice_websocket(
         )
     )
 
-    # ── Audio sender: streams PCM back to client in chunks ──────────────────
-    async def send_audio():
+    # ── Audio sender: streams PCM back to client ─────────────────────────────
+    async def send_audio_loop():
         """
-        Pulls synthesized PCM audio from audio_queue and sends it back to
-        the client as binary WebSocket frames.
+        Dequeues synthesized PCM audio chunks from audio_queue and streams
+        them back to the client as binary WebSocket frames.
 
-        Sends JSON event messages around each audio burst so the client
-        knows when to start/stop buffering and playing audio.
+        Sends JSON event messages (agent_text, audio_start, audio_end) around
+        each audio burst so the client knows when to start/stop playback.
+
+        Also appends agent responses to call_transcript for post-call scoring.
         """
         while True:
             item = await audio_queue.get()
             if item is None:
                 break
 
-            pcm    = item["pcm"]
-            text   = item["text"]
-            t_id   = item["tenant_id"]
-            l_id   = item["lead_id"]
+            pcm  = item["pcm"]
+            text = item["text"]
+
+            # Append to call transcript for post-call analysis
+            call_transcript.append({"role": "assistant", "text": text})
 
             try:
-                # Signal to client: agent text + audio incoming
+                # Notify client of agent text (for transcript display in UI)
                 await websocket.send_text(json.dumps({
                     "type": "agent_text",
                     "text": text,
                 }))
                 await websocket.send_text(json.dumps({"type": "audio_start"}))
 
-                # Stream PCM in 20ms chunks for low-latency playback
+                # Stream PCM in 20ms chunks (640 bytes each)
+                # asyncio.sleep(0) yields control so incoming audio isn't blocked
                 for i in range(0, len(pcm), AUDIO_CHUNK_SIZE):
-                    chunk = pcm[i:i + AUDIO_CHUNK_SIZE]
-                    await websocket.send_bytes(chunk)
-                    # Tiny yield so incoming messages aren't blocked
+                    await websocket.send_bytes(pcm[i : i + AUDIO_CHUNK_SIZE])
                     await asyncio.sleep(0)
 
                 await websocket.send_text(json.dumps({"type": "audio_end"}))
+
                 logger.info(
-                    f"[{t_id}/{l_id}] Audio sent: "
-                    f"'{text[:50]}' ({len(pcm)} bytes)"
+                    "[%s] Audio sent: '%s...' (%d bytes)",
+                    session_id, text[:40], len(pcm),
                 )
             except Exception as e:
-                logger.error(f"Audio send error: {e}")
+                logger.error("[%s] Audio send error: %s", session_id, e)
                 break
 
             audio_queue.task_done()
 
-    audio_task = asyncio.create_task(send_audio())
+    audio_task = asyncio.create_task(send_audio_loop())
 
-    # ── STT transcript relay (send transcript text to client as JSON) ───────
-    async def relay_transcript_events():
-        """Forward transcript text events to the client for UI display."""
-        # We hook into this by wrapping the transcript_queue indirectly.
-        # The STT worker will push items; we intercept them here via a
-        # separate monitoring approach in Phase 7 (dashboard).
-        # For now, handled inline in the main receive loop below.
-        pass
+    # Enqueue opening greeting so it plays immediately on connect
+    await response_queue.put({
+        "tenant_id": tenant_id,
+        "lead_id": lead_id,
+        "user_text": "[CALL_STARTED]",
+        "response": greeting_text,
+    })
 
-    # ── Main receive loop ───────────────────────────────────────────────────
+    # ── Main receive loop ────────────────────────────────────────────────────
+    # Handles two input types:
+    #   1. Binary: raw PCM bytes from browser microphone --> VAD
+    #   2. Text:   JSON control messages or raw text for testing --> transcript queue
     try:
         while True:
             message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                logger.info("[%s] WebSocket disconnect signal received.", session_id)
+                break
 
-            # Binary: raw PCM audio bytes → VAD pipeline
+            # Binary audio: send directly to VAD
             if "bytes" in message and message["bytes"] is not None:
                 await vad.feed(message["bytes"])
 
-            # Text: JSON control messages or direct text (for testing)
+            # Text: control message or test input
             elif "text" in message and message["text"] is not None:
                 raw = message["text"]
                 try:
                     payload = json.loads(raw)
                     msg_type = payload.get("type", "unknown")
-                    logger.info(
-                        f"[{tenant_id}/{lead_id}] Control msg: {msg_type}"
-                    )
+                    logger.debug("[%s] Control: %s", session_id, msg_type)
                     await websocket.send_text(
                         json.dumps({"type": "ack", "received": payload})
                     )
                 except json.JSONDecodeError:
-                    # Plain text input → treat as direct user speech transcript
-                    # (used by test clients and dev tools)
-                    logger.info(
-                        f"[{tenant_id}/{lead_id}] Text input: '{raw[:60]}'"
-                    )
+                    # Plain text --> treat as direct user speech (testing path)
+                    logger.info("[%s] Text input: '%s'", session_id, raw[:60])
+
+                    # Relay transcript event to client UI
                     await websocket.send_text(
                         json.dumps({"type": "transcript", "text": raw})
                     )
+                    # Append to transcript log
+                    call_transcript.append({"role": "user", "text": raw})
+
+                    # Push directly to transcript queue (bypasses VAD+STT)
                     await transcript_queue.put({
                         "tenant_id":  tenant_id,
                         "lead_id":    lead_id,
@@ -216,22 +292,113 @@ async def voice_websocket(
                     })
 
     except WebSocketDisconnect:
-        logger.info(f"[{tenant_id}/{lead_id}] WebSocket disconnected.")
+        logger.info("[%s] WebSocket disconnected.", session_id)
+
+    except Exception as e:
+        logger.error("[%s] Unexpected error in receive loop: %s", session_id, e)
 
     finally:
-        # ── Graceful teardown — in pipeline order ───────────────────────────
-        await vad.flush()
+        # ── Graceful pipeline teardown (in pipeline order) ────────────────
+        # Each None sentinel propagates downstream automatically via worker logic.
+        logger.info("[%s] Tearing down pipeline...", session_id)
 
-        await stt_queue.put(None)        # → STT stop
-        await stt_task
+        await vad.flush()                        # flush remaining VAD audio
 
-        await transcript_queue.put(None) # → LLM stop
-        await llm_task
+        await stt_queue.put(None)                # signal STT to stop
+        await stt_task                           # wait for STT to finish
 
-        # response_queue sentinel sent by llm_worker itself
-        await tts_task
+        await transcript_queue.put(None)         # signal LLM to stop
+        await llm_task                           # wait for LLM to finish
 
-        # audio_queue sentinel sent by tts_worker itself
-        await audio_task
+        # LLM worker puts None into response_queue automatically
+        await tts_task                           # wait for TTS to finish
 
-        logger.info(f"[{tenant_id}/{lead_id}] Full session cleaned up. ✓")
+        # TTS worker puts None into audio_queue automatically
+        await audio_task                         # wait for audio sender to finish
+
+        logger.info("[%s] Pipeline stopped. Running post-call actions...", session_id)
+
+        # ── Post-call: score lead + update MongoDB ────────────────────────
+        await _post_call_actions(
+            session_id=session_id,
+            tenant_id=tenant_id,
+            lead_id=lead_id,
+            call_transcript=call_transcript,
+            websocket=websocket,
+        )
+
+        logger.info("[%s] Session fully cleaned up.", session_id)
+
+
+async def _post_call_actions(
+    session_id: str,
+    tenant_id: str,
+    lead_id: str,
+    call_transcript: list,
+    websocket: WebSocket,
+) -> None:
+    """
+    Run post-call processing after the WebSocket disconnects.
+
+    Actions:
+      1. Score the lead using Laya fast scoring (~5ms)
+      2. Update lead record in MongoDB (score, outcome, last_called)
+      3. Send call_ended event to client (if still connected)
+      4. Log the call in call_logs collection (if implemented)
+
+    This runs in the finally block of the main handler -- errors here are
+    logged but do not raise to avoid breaking the graceful shutdown flow.
+
+    Args:
+        session_id:      Short session identifier for logging.
+        tenant_id:       Tenant MongoDB ID.
+        lead_id:         Lead MongoDB ID.
+        call_transcript: List of {role, text} dicts from the full call.
+        websocket:       WebSocket reference (may already be closed).
+    """
+    if not call_transcript:
+        logger.info("[%s] Empty transcript -- skipping post-call scoring.", session_id)
+        return
+
+    try:
+        from backend.agent.laya_router import laya_engine
+        scoring_result = laya_engine.evaluate_lead_score_fast(call_transcript)
+
+        logger.info(
+            "[%s] Post-call score: %d/100, outcome=%s, sentiment=%s",
+            session_id,
+            scoring_result["score"],
+            scoring_result["outcome"],
+            scoring_result["sentiment"],
+        )
+
+        # Update lead in MongoDB
+        call_summary = f"Auto-scored: {scoring_result['outcome']} | " \
+                       f"Score: {scoring_result['score']}/100 | " \
+                       f"Intent: {scoring_result['laya_intent']}"
+
+        from bson import ObjectId
+        if ObjectId.is_valid(lead_id):
+            await update_lead_after_call(
+                lead_id=lead_id,
+                summary=call_summary,
+                outcome=scoring_result["outcome"],
+                score_delta=scoring_result["score"] - 40,
+            )
+        else:
+            logger.info("[%s] Demo lead ID '%s' - skipping MongoDB lead update.", session_id, lead_id)
+
+        # Try to notify client of call result (they may already be disconnected)
+        try:
+            await websocket.send_text(json.dumps({
+                "type":      "call_ended",
+                "score":     scoring_result["score"],
+                "outcome":   scoring_result["outcome"],
+                "sentiment": scoring_result["sentiment"],
+                "turns":     len(call_transcript),
+            }))
+        except Exception:
+            pass  # Client already disconnected -- expected
+
+    except Exception as e:
+        logger.error("[%s] Post-call actions failed: %s", session_id, e)

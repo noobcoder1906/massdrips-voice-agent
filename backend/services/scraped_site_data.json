@@ -1,112 +1,31 @@
 {
-  "brand": "MASS DRIPS",
   "website": "https://www.massdrips.shop/",
+  "brand_name": "MASS DRIPS",
   "tagline": "Wear The Mass | Cinematic Streetwear",
   "origin": "Made in Chennai, India",
-  "fabric": "240 GSM Heavyweight Premium French Terry & Cotton",
-  "shipping": "3-4 Days Pan-India Delivery",
-  "payment": "COD (Cash on Delivery) + UPI",
+  "fabric": "240 GSM Heavyweight French Terry & Premium Cotton (Tees) · 380 GSM Heavyweight Fleece (Hoodies)",
+  "shipping": "3–4 Days Pan-India Express Delivery",
+  "payment": "Cash on Delivery (COD) + UPI Accepted",
+  "discount_code": "DRIP10 (10% OFF First Order)",
   "collections": [
-    {
-      "name": "Kollywood",
-      "styles": 15,
-      "fromPrice": 699,
-      "desc": "Tamil cinema mass icons & cult dialogues"
-    },
-    {
-      "name": "Bollywood",
-      "styles": 5,
-      "fromPrice": 699,
-      "desc": "Hindi cinema legends & cult classics"
-    },
-    {
-      "name": "Tollywood",
-      "styles": 3,
-      "fromPrice": 699,
-      "desc": "Telugu cinema hero statements"
-    },
-    {
-      "name": "Love Edition",
-      "styles": 2,
-      "fromPrice": 799,
-      "desc": "Romance & aesthetic cinematic pieces"
-    },
-    {
-      "name": "Mass Edition",
-      "styles": 1,
-      "fromPrice": 1499,
-      "desc": "Flagship signature drops"
-    },
-    {
-      "name": "Heavyweights",
-      "styles": 4,
-      "fromPrice": 1499,
-      "desc": "240 GSM oversized hoodies & sweatshirts"
-    }
+    {"name": "Kollywood", "styles": 15, "startingPrice": 699, "desc": "Tamil cinema mass icons & cult dialogues (Jana Nayagan, AK The Don, Thalapathy)"},
+    {"name": "Bollywood", "styles": 5, "startingPrice": 699, "desc": "Hindi cinema legends & cult statements (Main Rukta Nahi Hoon, Kismat Der Se Aye)"},
+    {"name": "Tollywood", "styles": 3, "startingPrice": 699, "desc": "Telugu cinema hero statements (Flower Nahi FIRE Pushpa, Jhukega Nahi Saala)"},
+    {"name": "Love Edition", "styles": 2, "startingPrice": 799, "desc": "Romance & aesthetic cinematic pieces (Some Feelings Don't Need Words)"},
+    {"name": "Heavyweights", "styles": 4, "startingPrice": 1499, "desc": "380 GSM & 240 GSM oversized hoodies & sweatshirts (In The Shadows We Forge)"}
   ],
   "products": [
-    {
-      "id": "MD001",
-      "name": "Jana Nayagan \u2014 Crowd Edition",
-      "price": 699,
-      "category": "Premium Oversized Tee",
-      "color": "Black",
-      "gsm": "240 GSM",
-      "badge": "HOT"
-    },
-    {
-      "id": "MD002",
-      "name": "In The Shadows We Forge",
-      "price": 1499,
-      "category": "Oversized Hoodie",
-      "color": "Black",
-      "gsm": "240 GSM",
-      "badge": "BESTSELLER"
-    },
-    {
-      "id": "MD003",
-      "name": "Main Rukta Nahi Hoon",
-      "price": 1199,
-      "category": "Sweatshirt",
-      "color": "Black",
-      "gsm": "240 GSM",
-      "badge": "NEW"
-    },
-    {
-      "id": "MD004",
-      "name": "Main Rukta Nahi Hoon",
-      "price": 699,
-      "category": "Oversized Tee",
-      "color": "Black",
-      "gsm": "240 GSM",
-      "badge": "TRENDING"
-    },
-    {
-      "id": "MD005",
-      "name": "Kismat Der Se Aye",
-      "price": 699,
-      "category": "Cracked Wall Tee",
-      "color": "Black",
-      "gsm": "240 GSM",
-      "badge": "TRENDING"
-    },
-    {
-      "id": "MD006",
-      "name": "Kismat Der Se Aye",
-      "price": 1599,
-      "category": "Cracked Hoodie \u2014 Melange Grey",
-      "color": "Melange Grey",
-      "gsm": "240 GSM",
-      "badge": "NEW"
-    },
-    {
-      "id": "MD007",
-      "name": "Kismat Der Se Aye",
-      "price": 1599,
-      "category": "Cracked Hoodie \u2014 White",
-      "color": "White",
-      "gsm": "240 GSM",
-      "badge": "HOT"
-    }
-  ]
+    {"id": "MD001", "name": "Jana Nayagan — Crowd Edition", "price": 699, "category": "Kollywood", "gsm": "240 GSM Heavyweight Tee", "badge": "HOT", "color": "Black"},
+    {"id": "MD002", "name": "In The Shadows We Forge", "price": 1499, "category": "Heavyweights", "gsm": "240 GSM Oversized Hoodie", "badge": "BESTSELLER", "color": "Black"},
+    {"id": "MD003", "name": "Main Rukta Nahi Hoon (Sweatshirt)", "price": 1199, "category": "Bollywood", "gsm": "240 GSM Sweatshirt", "badge": "NEW", "color": "Black"},
+    {"id": "MD004", "name": "Main Rukta Nahi Hoon (Tee)", "price": 699, "category": "Bollywood", "gsm": "240 GSM Oversized Tee", "badge": "TRENDING", "color": "Black"},
+    {"id": "MD005", "name": "Kismat Der Se Aye (Cracked Tee)", "price": 699, "category": "Bollywood", "gsm": "240 GSM Cracked Wall Tee", "badge": "TRENDING", "color": "Black"},
+    {"id": "MD006", "name": "Kismat Der Se Aye (Melange Grey Hoodie)", "price": 1599, "category": "Heavyweights", "gsm": "240 GSM Cracked Hoodie", "badge": "NEW", "color": "Melange Grey"},
+    {"id": "MD007", "name": "Kismat Der Se Aye (White Hoodie)", "price": 1599, "category": "Heavyweights", "gsm": "240 GSM Cracked Hoodie", "badge": "HOT", "color": "White"},
+    {"id": "MD008", "name": "Jana Nayagan — The People's Hero", "price": 799, "category": "Kollywood", "gsm": "240 GSM Dark Silhouette Tee", "badge": "LIMITED", "color": "Black"},
+    {"id": "MD009", "name": "Flower Nahi, FIRE (Pushpa)", "price": 699, "category": "Tollywood", "gsm": "240 GSM Wildfire Tee", "badge": "HOT", "color": "Black"},
+    {"id": "MD010", "name": "Thalapathy Forever Statement Tee", "price": 799, "category": "Kollywood", "gsm": "240 GSM Statement Tee", "badge": "BESTSELLER", "color": "Black"},
+    {"id": "MD027", "name": "AK — The Don's Edition (380 GSM)", "price": 1499, "category": "Kollywood", "gsm": "380 GSM Fleece Drop", "badge": "LIMITED", "color": "Black"}
+  ],
+  "synced_at": "Live synced"
 }

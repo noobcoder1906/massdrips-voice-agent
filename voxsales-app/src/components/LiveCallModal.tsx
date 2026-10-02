@@ -1,461 +1,401 @@
-import { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, PhoneOff, Sparkles, Volume2, Send, MessageSquare, Award, ArrowRight } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Mic, Volume2, PhoneOff, ArrowRight, Sparkles, MessageSquare, PhoneCall, AlertCircle } from 'lucide-react';
 import Button from './Button';
-import { saveRealCall, type CallRecord } from '../data/realStore';
 
 interface LiveCallModalProps {
-  isOpen: boolean;
+  isOpen?: boolean;
   onClose: () => void;
-  onCallCompleted?: (call: CallRecord) => void;
+  onCallCompleted?: () => void;
   leadName?: string;
   leadPhone?: string;
   brandName?: string;
 }
 
-export default function LiveCallModal({
-  isOpen,
-  onClose,
-  onCallCompleted,
-  leadName = 'Rahul Sharma',
-  leadPhone = '+91 98765 43210',
-  brandName = 'Mass Drips',
-}: LiveCallModalProps) {
-  const [callDuration, setCallDuration] = useState(0);
-  const [isMuted, setIsMuted] = useState(false);
+export default function LiveCallModal({ isOpen, onClose, onCallCompleted, leadName = 'Customer', brandName = 'MASS DRIPS' }: LiveCallModalProps) {
+  if (!isOpen) return null;
+
+  const [callState, setCallState] = useState<'idle' | 'connecting' | 'connected' | 'ended'>('idle');
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
-  const [leadScore, setLeadScore] = useState(65);
-  const [transcript, setTranscript] = useState<{ role: 'agent' | 'user'; text: string; ts: string }[]>([
-    { role: 'agent', text: `Hey ${leadName.split(' ')[0]}! This is Aria from ${brandName}. I saw you checked out our new acid wash collection. How are you doing today?`, ts: '0:01' }
-  ]);
-  const [customInput, setCustomInput] = useState('');
-  const [callEnded, setCallEnded] = useState(false);
-  const recognitionRef = useRef<any>(null);
-  const isAgentSpeakingRef = useRef<boolean>(false);
-  const lastProcessedTextRef = useRef<string>('');
-  const lastProcessedTimeRef = useRef<number>(0);
-  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const [transcript, setTranscript] = useState<{ role: 'user' | 'agent', text: string, ts: string }[]>([]);
+  const [callDuration, setCallDuration] = useState(0);
+  const [micError, setMicError] = useState<string | null>(null);
+  const [postCallScore, setPostCallScore] = useState<number | null>(null);
+  
+  // Audio & WebSocket Refs
+  const wsRef = useRef<WebSocket | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const audioProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  
+  // Playback Queue Refs
+  const nextPlayTimeRef = useRef<number>(0);
+  const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
 
-  // Timer
-  useEffect(() => {
-    if (!isOpen || callEnded) return;
-    const interval = setInterval(() => {
-      setCallDuration(d => d + 1);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [isOpen, callEnded]);
-
-  // Initial greeting when call modal opens
-  useEffect(() => {
-    if (isOpen && !callEnded) {
-      const greeting = `Hey ${leadName.split(' ')[0]}! Aria here from ${brandName}. I saw you were checking out our new acid wash drop. How's it going?`;
-      speakAgentText(greeting);
-      startSpeechRecognition();
+  const stopActiveAudio = () => {
+    activeSourcesRef.current.forEach(s => {
+      try {
+        s.stop();
+        s.disconnect();
+      } catch (e) {}
+    });
+    activeSourcesRef.current = [];
+    if (audioContextRef.current) {
+      nextPlayTimeRef.current = audioContextRef.current.currentTime;
     }
-    return () => {
-      stopSpeech();
-    };
+    setIsAgentSpeaking(false);
+  };
+
+  const addTranscript = (role: 'user' | 'agent', text: string) => {
+    const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setTranscript(prev => [...prev, { role, text, ts }]);
+  };
+
+  useEffect(() => {
+    let interval: any;
+    if (callState === 'connected') {
+      interval = setInterval(() => setCallDuration(p => p + 1), 1000);
+    }
+    return () => clearInterval(interval);
+  }, [callState]);
+
+  // Clean up everything when unmounting or closing
+  useEffect(() => {
+    if (!isOpen) stopEverything();
+    return () => stopEverything();
   }, [isOpen]);
 
-  const speakAgentText = async (text: string) => {
-    isAgentSpeakingRef.current = true;
-    setIsAgentSpeaking(true);
-
+  const initCall = async () => {
+    setCallState('connecting');
+    setMicError(null);
+    setTranscript([]);
+    setPostCallScore(null);
+    
     try {
-      // Fetch high-fidelity Cloned Neural Voice from backend
-      const res = await fetch('http://localhost:8000/api/v1/smart/speak', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voice: 'my_voice', speed: 1.02 })
+      // 1. Get Mic Permission & Stream (16kHz mono)
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        }
       });
-
-      if (res.ok) {
-        const blob = await res.blob();
-        const audioUrl = URL.createObjectURL(blob);
-        
-        if (audioPlayerRef.current) {
-          audioPlayerRef.current.pause();
-        }
-        
-        const audio = new Audio(audioUrl);
-        audioPlayerRef.current = audio;
-        
-        const onFinish = () => {
-          setTimeout(() => {
-            isAgentSpeakingRef.current = false;
-            setIsAgentSpeaking(false);
-          }, 350); // Buffer to prevent mic hearing speaker reverberation
-        };
-
-        audio.onended = onFinish;
-        audio.onerror = onFinish;
-        await audio.play();
-        return;
+      audioStreamRef.current = stream;
+      
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
       }
-    } catch (e) {
-      console.log('Falling back to browser speech:', e);
-    }
-
-    // Fallback: browser speech synthesis if backend audio unreachable
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.05;
-      utterance.pitch = 1.0;
-      const voices = window.speechSynthesis.getVoices();
-      const naturalVoice = voices.find(v => v.name.includes('Natural') || v.name.includes('Google') || v.lang.startsWith('en'));
-      if (naturalVoice) utterance.voice = naturalVoice;
-
-      const onFinish = () => {
-        setTimeout(() => {
-          isAgentSpeakingRef.current = false;
-          setIsAgentSpeaking(false);
-        }, 350);
-      };
-
-      utterance.onend = onFinish;
-      utterance.onerror = onFinish;
-      window.speechSynthesis.speak(utterance);
-    } else {
-      isAgentSpeakingRef.current = false;
-      setIsAgentSpeaking(false);
-    }
-  };
-
-  const stopSpeech = () => {
-    isAgentSpeakingRef.current = false;
-    setIsAgentSpeaking(false);
-    if (audioPlayerRef.current) {
-      audioPlayerRef.current.pause();
-    }
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch(e) {}
-    }
-  };
-
-  const startSpeechRecognition = () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
-
-    try {
-      if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch(e) {}
-      }
-
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = false;
-      recognition.lang = 'en-IN';
-
-      recognition.onend = () => {
-        if (isOpen && !callEnded) {
-          try { recognition.start(); } catch(e) {}
-        }
-      };
-
-      recognition.onresult = (event: any) => {
-        // Echo Cancellation: If agent is speaking, ignore microphone input completely
-        if (isAgentSpeakingRef.current) {
-          return;
-        }
-
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            const rawText = event.results[i][0].transcript.trim();
-            if (!rawText) continue;
-
-            // Debounce & deduplication check
-            const now = Date.now();
-            if (rawText.toLowerCase() === lastProcessedTextRef.current.toLowerCase() && (now - lastProcessedTimeRef.current) < 3500) {
-              continue;
+      audioContextRef.current = audioCtx;
+      
+      // 2. Connect to the Real-Time Voice Pipeline WebSocket
+      // Using generic IDs for demo purposes. Replace with actual tenant/lead IDs if available.
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.port === '5173' ? 'localhost:8000' : window.location.host;
+      const wsUrl = `${protocol}//${host}/ws/voice/tenant_123/lead_456`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+      
+      ws.binaryType = 'arraybuffer'; // Crucial for receiving audio frames
+      
+      ws.onopen = () => {
+        console.log("Live Voice WebSocket Connected!");
+        setCallState('connected');
+        
+        // Start capturing and sending audio
+        const source = audioCtx.createMediaStreamSource(stream);
+        const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+        audioProcessorRef.current = processor;
+        
+        source.connect(processor);
+        processor.connect(audioCtx.destination); // Required for Safari to process audio
+        
+        processor.onaudioprocess = (e) => {
+          if (ws.readyState === WebSocket.OPEN && callState !== 'ended') {
+            const inputData = e.inputBuffer.getChannelData(0);
+            const pcm16 = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) {
+              pcm16[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
             }
-
-            lastProcessedTextRef.current = rawText;
-            lastProcessedTimeRef.current = now;
-            handleUserSpeech(rawText);
+            ws.send(pcm16.buffer); // Stream raw bytes to VAD/Whisper
           }
+        };
+      };
+      
+      ws.onmessage = async (event) => {
+        if (typeof event.data === 'string') {
+          // JSON Event
+          try {
+            const msg = JSON.parse(event.data);
+            console.log("WS Event:", msg);
+            
+            if (msg.type === 'interrupt') {
+              console.log("⚡ Instant Barge-in: stopping agent speech");
+              stopActiveAudio();
+            } else if (msg.type === 'transcript') {
+              addTranscript('user', msg.text);
+            } else if (msg.type === 'agent_text') {
+              addTranscript('agent', msg.text);
+            } else if (msg.type === 'audio_start') {
+              setIsAgentSpeaking(true);
+            } else if (msg.type === 'audio_end') {
+              setIsAgentSpeaking(false);
+            } else if (msg.type === 'call_ended') {
+              setPostCallScore(msg.score);
+              endCall();
+            }
+          } catch (err) {
+            console.error("Failed to parse WS JSON:", err);
+          }
+        } else {
+          // Binary Audio Frame (TTS chunk)
+          playAudioChunk(event.data);
         }
       };
-
-      recognition.start();
-      recognitionRef.current = recognition;
+      
+      ws.onerror = (e) => {
+        console.error("WS Error", e);
+        setMicError("WebSocket connection failed. Is the backend running?");
+        endCall();
+      };
+      
+      ws.onclose = () => {
+        console.log("WS Closed");
+        if (callState !== 'ended') endCall();
+      };
+      
     } catch (e) {
-      console.log('Speech recognition init error:', e);
+      console.error(e);
+      setMicError("Microphone access denied or audio system error.");
+      setCallState('idle');
     }
   };
 
-  const handleUserSpeech = async (userText: string) => {
-    if (!userText.trim() || isAgentSpeakingRef.current) return;
-
-    const timeStr = `${Math.floor(callDuration / 60)}:${(callDuration % 60).toString().padStart(2, '0')}`;
-    setTranscript(prev => [...prev, { role: 'user', text: userText, ts: timeStr }]);
-
-    // Increase lead score on buying signals
-    const lower = userText.toLowerCase();
-    if (lower.includes('price') || lower.includes('cost') || lower.includes('size') || lower.includes('hoodie') || lower.includes('buy') || lower.includes('order')) {
-      setLeadScore(s => Math.min(96, s + 12));
+  const playAudioChunk = async (arrayBuffer: ArrayBuffer) => {
+    if (!audioContextRef.current) return;
+    const audioCtx = audioContextRef.current;
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
     }
+    
+    // Ensure byte alignment for Int16
+    const safeBytes = arrayBuffer.byteLength - (arrayBuffer.byteLength % 2);
+    if (safeBytes <= 0) return;
+    const pcm16 = new Int16Array(arrayBuffer, 0, safeBytes / 2);
+    const audioBuffer = audioCtx.createBuffer(1, pcm16.length, 16000);
+    const channelData = audioBuffer.getChannelData(0);
+    
+    for (let i = 0; i < pcm16.length; i++) {
+      channelData[i] = pcm16[i] / 32768.0;
+    }
+    
+    const source = audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    
+    // Smooth dynamics & anti-clipping limiter (eliminates "bushy" fuzzy sound)
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.value = 1.0;
 
-    // Call live backend Groq AI for intelligent conversational response
-    try {
-      isAgentSpeakingRef.current = true;
-      setIsAgentSpeaking(true);
+    const compressor = audioCtx.createDynamicsCompressor();
+    compressor.threshold.value = -6;
+    compressor.knee.value = 6;
+    compressor.ratio.value = 3;
+    compressor.attack.value = 0.003;
+    compressor.release.value = 0.05;
+    
+    source.connect(gainNode);
+    gainNode.connect(compressor);
+    compressor.connect(audioCtx.destination);
+    
+    // Playback scheduling to avoid gaps
+    const currTime = audioCtx.currentTime;
+    if (nextPlayTimeRef.current < currTime) {
+      nextPlayTimeRef.current = currTime;
+    }
+    
+    source.start(nextPlayTimeRef.current);
+    nextPlayTimeRef.current += audioBuffer.duration;
 
-      const historyPayload = transcript.map(t => ({
-        role: t.role === 'agent' ? 'assistant' : 'user',
-        content: t.text
-      }));
+    activeSourcesRef.current.push(source);
+    source.onended = () => {
+      activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== source);
+    };
+  };
 
-      const res = await fetch('http://localhost:8000/api/v1/smart/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: userText,
-          tenant_id: 'mass-drips',
-          lead_id: 'sample-lead-01',
-          history: historyPayload
-        })
-      });
-
-      let reply = "";
-      if (res.ok) {
-        const data = await res.json();
-        reply = data.reply;
-      } else {
-        // Fallback realistic response
-        if (lower.includes('price') || lower.includes('cost')) {
-          reply = "The Acid Wash Tees are ₹1,299, and Hoodies are ₹1,899. You can use coupon code DRIP10 for 10% off today!";
-        } else if (lower.includes('size')) {
-          reply = "Our fits are slightly relaxed streetwear. Medium is great for 38-40 chest, and Large is 42-44.";
-        } else {
-          reply = "Got it! Our 240 GSM heavy French Terry gives that perfect boxy drape. Want me to send the link on WhatsApp?";
-        }
+  const stopEverything = () => {
+    stopActiveAudio();
+    if (audioProcessorRef.current) {
+      audioProcessorRef.current.disconnect();
+      audioProcessorRef.current = null;
+    }
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach(t => t.stop());
+      audioStreamRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(console.error);
+      audioContextRef.current = null;
+    }
+    if (wsRef.current) {
+      if (wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.close();
       }
-
-      const agentTimeStr = `${Math.floor(callDuration / 60)}:${(callDuration % 60).toString().padStart(2, '0')}`;
-      setTranscript(prev => [...prev, { role: 'agent', text: reply, ts: agentTimeStr }]);
-      speakAgentText(reply);
-    } catch (e) {
-      const fallbackReply = "Haan bilkul! Our 240 GSM heavy cotton tees and hoodies are in stock. Should I WhatsApp you the direct link?";
-      setTranscript(prev => [...prev, { role: 'agent', text: fallbackReply, ts: timeStr }]);
-      speakAgentText(fallbackReply);
+      wsRef.current = null;
     }
-  };
-
-  const handleSendManualText = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customInput.trim()) return;
-    const text = customInput;
-    setCustomInput('');
-    handleUserSpeech(text);
+    nextPlayTimeRef.current = 0;
+    setIsAgentSpeaking(false);
   };
 
   const endCall = () => {
-    stopSpeech();
-    setCallEnded(true);
-
-    const fullTranscript = transcript.map(t => `${t.role === 'agent' ? 'Aria' : leadName}: ${t.text}`).join('\n');
-    const outcome: 'converted' | 'interested' | 'callback' = leadScore >= 75 ? 'converted' : leadScore >= 55 ? 'interested' : 'callback';
-    const sentiment: 'very_positive' | 'positive' | 'neutral' = leadScore >= 75 ? 'very_positive' : leadScore >= 55 ? 'positive' : 'neutral';
-
-    const record: CallRecord = {
-      id: `CALL-${Date.now().toString().slice(-4)}`,
-      lead: leadName,
-      phone: leadPhone,
-      duration: formatSec(callDuration),
-      durationSec: callDuration,
-      score: leadScore,
-      outcome,
-      sentiment,
-      date: 'Just now',
-      transcript: fullTranscript,
-      productDiscussed: 'Acid Wash Oversized Tee',
-      whatsappMessage: `Hi ${leadName.split(' ')[0]}! Thanks for chatting with Aria at ${brandName}. Here is the link for the Acid Wash Oversized Tee: massdrips.com/catalog. Use code DRIP10 for 10% OFF today!`,
-    };
-
-    saveRealCall(record);
-    if (onCallCompleted) {
-      onCallCompleted(record);
-    }
+    stopEverything();
+    setCallState('ended');
+    if (onCallCompleted) onCallCompleted();
   };
 
-  const formatSec = (s: number) => {
-    const mins = Math.floor(s / 60);
-    const secs = s % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
-
-  if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
-      <div
-        className="relative w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl flex flex-col"
-        style={{
-          background: 'linear-gradient(180deg, #111116 0%, #0c0c10 100%)',
-          border: '1px solid var(--color-border)',
-          maxHeight: '90vh',
-        }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-          <div className="flex items-center gap-3">
-            <div className="relative w-10 h-10 rounded-full flex items-center justify-center font-bold text-black" style={{ background: 'var(--color-accent)' }}>
-              A
-              {isAgentSpeaking && (
-                <span className="absolute -inset-1 rounded-full animate-ping opacity-75" style={{ background: 'var(--color-accent)' }} />
-              )}
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-white text-base">Aria · AI Sales Voice Agent</h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                  Live HD
-                </span>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in p-4 md:p-8">
+      <div className="w-full max-w-5xl h-[85vh] bg-[#0a0a0a] border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row">
+        
+        {/* Left Side: Visualizer */}
+        <div className="w-full md:w-[45%] bg-gradient-to-b from-[#1a1a1a] to-black flex flex-col relative border-r border-white/10">
+          <div className="p-6 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-[#00e599]/20 flex items-center justify-center text-[#00e599] font-bold border border-[#00e599]/30 shadow-[0_0_15px_rgba(0,229,153,0.2)]">
+                A
               </div>
-              <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                Calling {leadName} ({leadPhone}) · {formatSec(callDuration)}
-              </p>
+              <div>
+                <h2 className="text-white font-bold tracking-wide">Aria AI</h2>
+                <p className="text-[10px] text-[#00e599] font-bold uppercase tracking-widest">Live Call Active</p>
+              </div>
+            </div>
+            <div className="px-3 py-1 bg-white/5 border border-white/10 rounded-full text-xs text-white/70 font-mono">
+              {formatTime(callDuration)}
             </div>
           </div>
+          
+          <div className="flex-1 flex flex-col items-center justify-center p-6">
+            {callState === 'idle' ? (
+              <div className="text-center space-y-6">
+                <div className="w-24 h-24 mx-auto rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
+                  <Mic size={32} className="text-white/50" />
+                </div>
+                <h3 className="text-2xl font-bold text-white">Ready to connect?</h3>
+                {micError && (
+                  <div className="flex items-center justify-center gap-2 text-rose-500 text-sm mb-4">
+                    <AlertCircle size={16} /> {micError}
+                  </div>
+                )}
+                <Button variant="primary" size="lg" className="px-10 rounded-full shadow-[0_0_20px_rgba(0,229,153,0.3)] hover:scale-105 transition-transform" onClick={initCall}>
+                  Start Live Voice Call
+                </Button>
+              </div>
+            ) : callState === 'connecting' ? (
+              <div className="flex flex-col items-center justify-center animate-pulse">
+                <div className="w-24 h-24 rounded-full bg-[#00e599]/10 flex items-center justify-center mb-4">
+                  <PhoneCall size={32} className="text-[#00e599]" />
+                </div>
+                <p className="text-white font-bold tracking-wide">Connecting WebSocket...</p>
+                <p className="text-xs text-white/50 mt-2">Establishing secure pipeline</p>
+              </div>
+            ) : callState === 'ended' ? (
+              <div className="flex flex-col items-center justify-center">
+                <div className="w-24 h-24 rounded-full bg-rose-500/10 flex items-center justify-center mb-4 text-rose-500">
+                  <PhoneOff size={32} />
+                </div>
+                <p className="text-white font-bold tracking-wide">Call Ended</p>
+                <p className="text-xs text-white/50 mt-2">Duration: {formatTime(callDuration)}</p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center">
+                <div className="relative flex items-center justify-center mb-8">
+                  <div className={`absolute w-40 h-40 rounded-full border-2 border-[#00e599]/20 ${isAgentSpeaking ? 'animate-ping' : ''}`} />
+                  <div className={`absolute w-32 h-32 rounded-full border border-[#00e599]/40 ${isAgentSpeaking ? 'animate-pulse' : ''}`} />
+                  
+                  <div className={`w-28 h-28 rounded-full bg-[#00e599]/10 border-2 border-[#00e599] flex items-center justify-center shadow-[0_0_30px_rgba(0,229,153,0.3)] z-10 transition-transform duration-300 ${isAgentSpeaking ? 'scale-110' : 'scale-100'}`}>
+                    {isAgentSpeaking ? (
+                      <Volume2 size={40} className="text-[#00e599] animate-bounce" />
+                    ) : (
+                      <Mic size={40} className="text-white animate-pulse" />
+                    )}
+                  </div>
+                </div>
 
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--color-border)' }}>
-              <Award size={13} style={{ color: 'var(--color-accent)' }} />
-              <span className="text-white">Score: {leadScore}/100</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Content Body */}
-        {!callEnded ? (
-          <div className="p-6 flex-1 overflow-y-auto space-y-6">
-            {/* Visualizer Circle */}
-            <div className="flex flex-col items-center justify-center py-4">
-              <div className="relative flex items-center justify-center">
-                {/* Glow rings */}
-                <div
-                  className={`absolute w-32 h-32 rounded-full transition-all duration-300 ${isAgentSpeaking ? 'animate-pulse scale-125 opacity-40' : 'opacity-10'}`}
-                  style={{ background: 'var(--color-accent)', filter: 'blur(20px)' }}
-                />
-                <div
-                  className={`w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 ${isAgentSpeaking ? 'scale-110 shadow-lg shadow-[#00e599]/30' : ''}`}
-                  style={{
-                    background: isAgentSpeaking ? 'var(--color-accent)' : 'var(--color-bg-card)',
-                    border: '2px solid var(--color-accent)',
-                  }}
-                >
-                  <Volume2 size={36} className={isAgentSpeaking ? 'text-black animate-bounce' : 'text-[#00e599]'} />
+                <div className="text-center h-10">
+                  {micError ? (
+                    <p className="text-xs font-bold text-rose-500 uppercase tracking-widest flex items-center justify-center gap-2">
+                      <AlertCircle size={14} /> {micError}
+                    </p>
+                  ) : isAgentSpeaking ? (
+                    <p className="text-xs font-bold text-[#00e599] uppercase tracking-widest flex items-center justify-center gap-2">
+                      <span className="w-2 h-2 bg-[#00e599] rounded-full animate-ping" />
+                      Aria is speaking...
+                    </p>
+                  ) : (
+                    <p className="text-xs font-bold text-white uppercase tracking-widest flex items-center justify-center gap-2">
+                      <span className="w-2 h-2 bg-[#00e599] rounded-full animate-pulse" />
+                      Pipeline Active - Speak Naturally
+                    </p>
+                  )}
                 </div>
               </div>
-              <p className="text-xs font-semibold mt-4 text-center tracking-wide" style={{ color: isAgentSpeaking ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>
-                {isAgentSpeaking ? 'ARIA IS SPEAKING (AI VOICE STREAM)...' : 'LISTENING TO YOUR MICROPHONE...'}
-              </p>
-            </div>
-
-            {/* Live Subtitles / Dialogue Stream */}
-            <div className="space-y-3">
-              <p className="text-[11px] uppercase font-bold tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
-                Live Conversation Stream
-              </p>
-              <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
-                {transcript.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className={`flex flex-col p-3 rounded-2xl text-xs max-w-[85%] ${
-                      item.role === 'agent'
-                        ? 'bg-white/5 border border-white/10 text-white self-start'
-                        : 'ml-auto bg-[#00e599]/15 border border-[#00e599]/30 text-[#00e599] font-medium'
-                    }`}
-                  >
-                    <span className="text-[10px] opacity-60 mb-0.5">{item.role === 'agent' ? 'Aria (AI)' : leadName} · {item.ts}</span>
-                    <span>{item.text}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Manual input fallback */}
-            <form onSubmit={handleSendManualText} className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Or type what you want to say to Aria..."
-                className="flex-1 px-4 py-2.5 rounded-xl text-xs bg-white/5 border border-white/10 text-white outline-none focus:border-[#00e599]"
-                value={customInput}
-                onChange={e => setCustomInput(e.target.value)}
-              />
-              <Button type="submit" size="sm" variant="primary" rightIcon={<Send size={13} />}>
-                Say
-              </Button>
-            </form>
+            )}
           </div>
-        ) : (
-          /* Post-Call Summary View */
-          <div className="p-6 flex-1 overflow-y-auto space-y-5 animate-fade-in">
-            <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-center">
-              <div className="w-10 h-10 rounded-full bg-emerald-500 text-black flex items-center justify-center mx-auto mb-2 font-bold">
-                ✓
-              </div>
-              <h4 className="text-sm font-bold text-white">Call Completed · Intelligence Generated</h4>
-              <p className="text-xs text-emerald-300 mt-1">Lead Score: {leadScore}/100 · High Intent Buyer 🔥</p>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-xs font-bold text-white flex items-center gap-1.5">
-                <Sparkles size={14} className="text-[#00e599]" /> AI Executive Summary
-              </p>
-              <div className="p-3 rounded-xl bg-white/5 text-xs text-white/80 border border-white/10">
-                Customer {leadName} engaged with Mass Drips sales agent regarding Acid Wash Tees and Hoodies. Price objection successfully resolved with 10% first-order discount code DRIP10.
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-xs font-bold text-white flex items-center gap-1.5">
-                <MessageSquare size={14} className="text-[#00e599]" /> Automated WhatsApp Follow-up Ready
-              </p>
-              <div className="p-3 rounded-xl bg-emerald-950/40 text-xs text-emerald-200 border border-emerald-500/20">
-                "Hi {leadName.split(' ')[0]}! Thanks for chatting with Aria at {brandName}. Here is the link for the Acid Wash Oversized Tee: massdrips.com/catalog. Use code DRIP10 for 10% OFF today!"
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Footer Controls */}
-        <div className="p-4 border-t flex items-center justify-between" style={{ borderColor: 'var(--color-border)', background: 'rgba(0,0,0,0.4)' }}>
-          {!callEnded ? (
-            <>
-              <button
-                onClick={() => setIsMuted(!isMuted)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 bg-white/5 hover:bg-white/10 text-white"
-              >
-                {isMuted ? <MicOff size={14} className="text-rose-400" /> : <Mic size={14} />}
-                {isMuted ? 'Muted' : 'Mic Active'}
+          
+          {callState !== 'ended' && callState !== 'idle' && (
+            <div className="p-6 mt-auto flex justify-center z-10">
+              <button onClick={endCall} className="w-14 h-14 rounded-full bg-rose-600 hover:bg-rose-500 flex items-center justify-center shadow-lg shadow-rose-600/20 transition-all hover:scale-105">
+                <PhoneOff size={24} className="text-white" />
               </button>
-
-              <button
-                onClick={endCall}
-                className="px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/30 transition-all"
-              >
-                <PhoneOff size={15} />
-                End Call
-              </button>
-            </>
-          ) : (
-            <Button
-              variant="primary"
-              className="w-full"
-              rightIcon={<ArrowRight size={14} />}
-              onClick={() => {
-                onClose();
-                setCallEnded(false);
-                setCallDuration(0);
-              }}
-            >
-              Save & Back to Dashboard
-            </Button>
+            </div>
           )}
+        </div>
+
+        {/* Right Side: Transcript */}
+        <div className="w-full md:w-[55%] flex flex-col h-full bg-[#111111]">
+          <div className="p-4 border-b border-white/10 flex justify-between items-center">
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider">Live Pipeline Transcript</h3>
+            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full text-white/50 hover:text-white transition-colors">
+              <X size={18} />
+            </button>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div className="inline-block px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-xs text-white/50 font-mono mb-2">
+              Status: {callState.toUpperCase()}
+            </div>
+            
+            {transcript.map((item, idx) => (
+              <div key={idx} className={`flex flex-col max-w-[85%] ${item.role === 'agent' ? 'self-start' : 'self-end ml-auto'}`}>
+                <span className="text-[10px] text-white/40 mb-1 ml-1">{item.role === 'agent' ? 'Aria' : leadName} • {item.ts}</span>
+                <div className={`p-3 rounded-2xl text-sm ${
+                  item.role === 'agent' 
+                    ? 'bg-white/5 border border-white/10 text-white rounded-tl-sm' 
+                    : 'bg-[#00e599]/10 border border-[#00e599]/20 text-[#00e599] rounded-tr-sm'
+                }`}>
+                  {item.text}
+                </div>
+              </div>
+            ))}
+            
+            {callState === 'ended' && postCallScore !== null && (
+              <div className="mt-8 p-5 rounded-2xl bg-[#00e599]/10 border border-[#00e599]/20 animate-fade-in">
+                <h4 className="text-[#00e599] font-bold flex items-center gap-2 mb-2">
+                  <Sparkles size={16} /> Laya AI Post-Call Score
+                </h4>
+                <div className="flex items-center gap-4">
+                  <div className="text-4xl font-bold text-white">{postCallScore}/100</div>
+                  <p className="text-white/80 text-sm leading-relaxed">
+                    Lead successfully qualified via Laya Router pipeline.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

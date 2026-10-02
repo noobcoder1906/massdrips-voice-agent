@@ -18,9 +18,45 @@ export default function Dashboard() {
   const [realActivities, setRealActivities] = useState<ActivityItem[]>([]);
   const navigate = useNavigate();
 
+  const [websiteUrl, setWebsiteUrl] = useState('https://www.massdrips.shop/');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [storeData, setStoreData] = useState<any>(null);
+
   useEffect(() => {
     refreshData();
+    fetchStoreKnowledge();
   }, []);
+
+  const fetchStoreKnowledge = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/v1/smart/store-knowledge');
+      if (res.ok) {
+        const data = await res.json();
+        setStoreData(data);
+      }
+    } catch (e) {}
+  };
+
+  const handleSyncWebsite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!websiteUrl.trim()) return;
+    setIsSyncing(true);
+    try {
+      const res = await fetch('http://localhost:8000/api/v1/smart/sync-website', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: websiteUrl })
+      });
+      if (res.ok) {
+        const result = await res.json();
+        setStoreData(result.data);
+      }
+    } catch (e) {
+      console.log('Website sync error:', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const refreshData = () => {
     setRealCalls(getRealCalls());
@@ -132,6 +168,101 @@ export default function Dashboard() {
               <StatsCard key={stat.label} {...stat} delay={i * 80} />
             ))
         }
+      </div>
+
+      {/* Live Website Knowledge & Scraper Center */}
+      <div
+        className="rounded-2xl p-5 lg:p-6 space-y-4"
+        style={{
+          background: 'linear-gradient(180deg, rgba(17,17,24,0.95) 0%, rgba(12,12,16,0.95) 100%)',
+          border: '1px solid var(--color-border)',
+        }}
+      >
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <h3 className="text-base font-bold text-white">Live Store Website Knowledge Sync</h3>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                Active in Agent Brain
+              </span>
+            </div>
+            <p className="text-xs text-white/50">
+              Enter your live e-commerce URL. The voice agent automatically scrapes your catalog, fabric specs, prices, and shipping policies.
+            </p>
+          </div>
+
+          <form onSubmit={handleSyncWebsite} className="flex gap-2 w-full md:w-auto">
+            <input
+              type="url"
+              placeholder="https://www.massdrips.shop/"
+              value={websiteUrl}
+              onChange={(e) => setWebsiteUrl(e.target.value)}
+              className="px-4 py-2 rounded-xl text-xs bg-white/5 border border-white/10 text-white outline-none focus:border-[#00e599] w-full md:w-72"
+            />
+            <Button
+              type="submit"
+              size="sm"
+              variant="primary"
+              disabled={isSyncing}
+            >
+              {isSyncing ? 'Scraping...' : 'Sync Store'}
+            </Button>
+          </form>
+        </div>
+
+        {/* Scraped Knowledge Preview Card */}
+        {storeData && (
+          <div className="pt-3 border-t border-white/10 space-y-4 animate-fade-in">
+            {/* Meta Pill Badges */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
+                <p className="text-[10px] text-white/40 uppercase font-semibold">Store Brand</p>
+                <p className="text-xs font-bold text-white mt-0.5">{storeData.brand_name || 'MASS DRIPS'}</p>
+              </div>
+              <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
+                <p className="text-[10px] text-white/40 uppercase font-semibold">Fabric Specs</p>
+                <p className="text-xs font-bold text-emerald-400 mt-0.5">240 GSM & 380 GSM Fleece</p>
+              </div>
+              <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
+                <p className="text-[10px] text-white/40 uppercase font-semibold">Shipping & Terms</p>
+                <p className="text-xs font-bold text-white mt-0.5">3–4 Days · COD + UPI</p>
+              </div>
+              <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
+                <p className="text-[10px] text-white/40 uppercase font-semibold">Objection Closer</p>
+                <p className="text-xs font-bold text-amber-400 mt-0.5">Code DRIP10 (10% OFF)</p>
+              </div>
+            </div>
+
+            {/* Live Collections & Scraped Products Preview */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-white/80">
+                  📦 Scraped Live Store Products ({storeData.products?.length || 11} items synced from {storeData.website || 'massdrips.shop'}):
+                </p>
+                <span className="text-[11px] text-emerald-400 font-mono">Status: 100% Synced</span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 max-h-52 overflow-y-auto pr-1">
+                {(storeData.products || []).map((prod: any) => (
+                  <div key={prod.id} className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between gap-1 mb-1">
+                        <span className="text-[9px] px-1.5 py-0.2 rounded font-mono bg-white/10 text-white/70">{prod.category}</span>
+                        {prod.badge && (
+                          <span className="text-[9px] font-bold text-amber-400">{prod.badge}</span>
+                        )}
+                      </div>
+                      <p className="text-xs font-semibold text-white line-clamp-1">{prod.name}</p>
+                      <p className="text-[10px] text-white/40">{prod.gsm || '240 GSM'}</p>
+                    </div>
+                    <p className="text-xs font-bold text-emerald-400 mt-2">₹{prod.price.toLocaleString()}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Grid */}

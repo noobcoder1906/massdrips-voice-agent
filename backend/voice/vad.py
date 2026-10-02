@@ -1,16 +1,13 @@
-"""
+﻿"""
 backend/voice/vad.py
 
 Silero VAD (Voice Activity Detection) using ONNX Runtime.
 Processes raw PCM 16-bit mono 16kHz audio chunks and detects
-speech frames vs silence frames.
-
-Architecture:
-  WebSocket binary chunk --> VAD --> speech frames --> STT Queue
+speech frames vs silence frames with natural conversational thresholds
+and instant barge-in detection.
 """
 import asyncio
 import logging
-import struct
 import urllib.request
 from pathlib import Path
 
@@ -19,16 +16,16 @@ import onnxruntime as ort
 
 logger = logging.getLogger(__name__)
 
-# ── Constants ──────────────────────────────────────────────────────────────────
-SAMPLE_RATE = 16000          # 16kHz — Whisper's native rate
+# Constants
+SAMPLE_RATE = 16000          # 16kHz
 FRAME_DURATION_MS = 30       # 30ms frames
 FRAME_SAMPLES = int(SAMPLE_RATE * FRAME_DURATION_MS / 1000)  # 480 samples
-FRAME_BYTES = FRAME_SAMPLES * 2  # 2 bytes per int16 sample
+FRAME_BYTES = FRAME_SAMPLES * 2  # 960 bytes per int16 sample
 SPEECH_THRESHOLD = 0.5       # Silero confidence threshold
-MIN_SPEECH_FRAMES = 3        # Min consecutive speech frames before triggering
-SILENCE_FRAMES_TO_END = 20   # 600ms silence ends an utterance
+MIN_SPEECH_FRAMES = 4        # 120ms of speech triggers barge-in / speech start
+SILENCE_FRAMES_TO_END = 25   # 25 frames * 30ms = 750ms natural conversational pause
 
-# Silero VAD ONNX model URL (pinned version)
+# Silero VAD ONNX model URL
 SILERO_MODEL_URL = (
     "https://github.com/snakers4/silero-vad/raw/v4.0stable/"
     "files/silero_vad.onnx"
@@ -50,9 +47,6 @@ def _download_model_if_needed() -> None:
 class SileroVAD:
     """
     Wraps the Silero VAD ONNX model for per-call voice activity detection.
-
-    Each active WebSocket call should create its own SileroVAD instance
-    to maintain per-session LSTM state (h, c tensors).
     """
 
     def __init__(self):
@@ -73,16 +67,6 @@ class SileroVAD:
         self._sample_rate_tensor = np.array(SAMPLE_RATE, dtype=np.int64)
 
     def _predict_frame(self, pcm_frame: bytes) -> float:
-        """
-        Run one 30ms PCM frame through Silero VAD.
-
-        Args:
-            pcm_frame: Exactly FRAME_BYTES of raw 16-bit LE PCM audio.
-
-        Returns:
-            Speech probability (0.0 – 1.0).
-        """
-        # Convert bytes → float32 in [-1, 1]
         samples = np.frombuffer(pcm_frame, dtype=np.int16).astype(np.float32)
         samples /= 32768.0
         audio_tensor = samples.reshape(1, -1)  # [1, 480]
@@ -98,40 +82,28 @@ class SileroVAD:
         )
         self._h = h_out
         self._c = c_out
-        return float(out[0])
+        return float(out.squeeze())
 
     def reset(self) -> None:
-        """Public method to reset state between utterances."""
         self._reset_state()
 
 
 class VoiceActivityDetector:
     """
     High-level VAD manager for one WebSocket session.
-
-    Buffers incoming binary audio, splits into 30ms frames,
-    runs Silero, and emits complete utterance byte-strings
-    onto the provided asyncio output queue.
-
-    Usage:
-        detector = VoiceActivityDetector(stt_queue)
-        await detector.feed(raw_bytes)   # call on every WS binary message
-        await detector.flush()           # call on WS disconnect
+    Supports speech boundary detection, utterance accumulation, and barge-in callback.
     """
 
-    def __init__(self, output_queue: asyncio.Queue):
+    def __init__(self, output_queue: asyncio.Queue, on_speech_start=None):
         self._vad = SileroVAD()
         self._out_q = output_queue
+        self._on_speech_start = on_speech_start
         self._buffer = b""         # rolling byte buffer
         self._speech_buf = b""     # accumulates current utterance
         self._speech_count = 0     # consecutive speech frames
         self._silence_count = 0    # consecutive silence frames after speech
 
     async def feed(self, data: bytes) -> None:
-        """
-        Accept raw binary audio bytes from the WebSocket.
-        Data may be any length; internally sliced into 30ms frames.
-        """
         self._buffer += data
         while len(self._buffer) >= FRAME_BYTES:
             frame, self._buffer = (
@@ -148,20 +120,28 @@ class VoiceActivityDetector:
             self._speech_count += 1
             self._silence_count = 0
             self._speech_buf += frame
+
+            # Instant Barge-In detection when user starts speaking
+            if self._speech_count == MIN_SPEECH_FRAMES and self._on_speech_start:
+                try:
+                    res = self._on_speech_start()
+                    if asyncio.iscoroutine(res):
+                        asyncio.create_task(res)
+                except Exception as e:
+                    logger.debug("on_speech_start callback error: %s", e)
         else:
             if self._speech_count >= MIN_SPEECH_FRAMES:
-                # We were in speech, now silence
+                # User was speaking, now in pause
                 self._silence_count += 1
-                self._speech_buf += frame  # include trailing silence
+                self._speech_buf += frame
+                # End of turn detected after 750ms natural pause
                 if self._silence_count >= SILENCE_FRAMES_TO_END:
                     await self._emit_utterance()
             else:
-                # Too short to count — discard
                 self._speech_count = 0
                 self._speech_buf = b""
 
     async def _emit_utterance(self) -> None:
-        """Push collected speech bytes onto the STT queue."""
         if self._speech_buf:
             logger.info(
                 f"VAD: utterance detected, "
@@ -174,6 +154,5 @@ class VoiceActivityDetector:
         self._vad.reset()
 
     async def flush(self) -> None:
-        """Flush any remaining buffered speech at end of call."""
         if self._speech_count >= MIN_SPEECH_FRAMES and self._speech_buf:
             await self._emit_utterance()

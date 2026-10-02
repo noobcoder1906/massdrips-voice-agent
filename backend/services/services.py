@@ -51,11 +51,41 @@ DEFAULT_MASS_DRIPS_PERSONA = {
     "max_response_words": 50,
 }
 
-DEFAULT_MASS_DRIPS_PRODUCTS = [
-    {"name": "Acid Wash Oversized Tee", "price": 1299, "category": "T-Shirts", "in_stock": True, "description": "240 GSM heavy French Terry cotton with raw acid-wash finish."},
-    {"name": "Heavyweight Boxy Hoodie", "price": 1899, "category": "Hoodies", "in_stock": True, "description": "380 GSM brushed fleece with oversized dropped shoulders."},
-    {"name": "Tactical Cargo Joggers", "price": 2499, "category": "Bottoms", "in_stock": True, "description": "Ripstop cotton with 6 deep utility pockets and cinch ankles."},
-]
+import json
+import os
+
+def _get_scraped_products():
+    json_path = os.path.join(os.path.dirname(__file__), "scraped_site_data.json")
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            prods = []
+            for p in data.get("products", []):
+                prods.append({
+                    "id": p.get("id"),
+                    "name": p.get("name"),
+                    "price": p.get("price"),
+                    "category": p.get("category"),
+                    "gsm": p.get("gsm", "240 GSM"),
+                    "badge": p.get("badge", ""),
+                    "color": p.get("color", "Black"),
+                    "description": f"{p.get('gsm', '240 GSM')} {p.get('category')} graphic streetwear piece in {p.get('color', 'Black')}.",
+                    "in_stock": True,
+                })
+            if prods:
+                return prods
+    except Exception as e:
+        pass
+    return [
+        {"name": "Jana Nayagan – Crowd Edition", "price": 699, "category": "Kollywood", "in_stock": True, "description": "240 GSM Heavyweight Tee. Black with crowd silhouette graphic."},
+        {"name": "In The Shadows We Forge", "price": 1499, "category": "Heavyweights", "in_stock": True, "description": "240/380 GSM Oversized Hoodie in Black."},
+        {"name": "Main Rukta Nahi Hoon (Tee)", "price": 699, "category": "Bollywood", "in_stock": True, "description": "240 GSM Oversized Tee in Black."},
+        {"name": "Kismat Der Se Aye (Cracked Tee)", "price": 699, "category": "Bollywood", "in_stock": True, "description": "240 GSM Cracked Wall Tee in Black."},
+        {"name": "Flower Nahi, FIRE (Pushpa)", "price": 699, "category": "Tollywood", "in_stock": True, "description": "240 GSM Wildfire graphic Tee in Black."},
+        {"name": "AK – The Don's Edition", "price": 1499, "category": "Kollywood", "in_stock": True, "description": "380 GSM Heavyweight Fleece Hoodie in Black."},
+    ]
+
+DEFAULT_MASS_DRIPS_PRODUCTS = _get_scraped_products()
 
 
 async def get_tenant(tenant_id: str) -> Optional[dict]:

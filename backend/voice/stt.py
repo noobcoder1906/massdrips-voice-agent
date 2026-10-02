@@ -1,13 +1,11 @@
+from dotenv import load_dotenv
+load_dotenv()
 """
 backend/voice/stt.py
 
-Local Speech-to-Text using faster-whisper (CTranslate2).
-Zero API cost, runs fully on-device (CPU or CUDA).
-
-Model selection via environment:
-  WHISPER_MODEL  = "tiny" | "base" | "small" | "medium" | "large-v3"
-  WHISPER_DEVICE = "cpu" | "cuda"
-  WHISPER_LANG   = "hi" | "en" | None (auto-detect)
+Speech-to-Text with multi-engine support:
+  1. Groq Cloud Whisper (whisper-large-v3-turbo) -- ultra-low latency (~150ms)
+  2. Local faster-whisper fallback -- zero API cost, runs on CPU/CUDA
 
 Architecture:
   VAD output queue --> STT worker --> transcript string --> response queue
@@ -15,10 +13,9 @@ Architecture:
 
 import asyncio
 import io
+import json
 import logging
 import os
-import struct
-import tempfile
 import wave
 from pathlib import Path
 
@@ -46,16 +43,13 @@ def _pcm_to_wav(pcm_bytes: bytes, sample_rate: int = SAMPLE_RATE) -> bytes:
 
 class WhisperSTT:
     """
-    Singleton-ish wrapper around faster-whisper.WhisperModel.
-
-    Lazy initialization so the model only loads when first used,
-    keeping startup time fast.
+    STT Engine wrapper with Groq Cloud priority and local faster-whisper fallback.
     """
 
     _model = None
 
     @classmethod
-    def get_model(cls):
+    def get_local_model(cls):
         if cls._model is None:
             from faster_whisper import WhisperModel
             logger.info(
@@ -74,37 +68,48 @@ class WhisperSTT:
     def transcribe(cls, pcm_bytes: bytes) -> str:
         """
         Transcribe raw PCM bytes to text.
-
-        Args:
-            pcm_bytes: Raw 16-bit LE mono 16kHz PCM audio.
-
-        Returns:
-            Transcribed text string (stripped), or empty string.
+        Prioritizes Groq Whisper (150ms) -> falls back to local Faster-Whisper.
         """
-        model = cls.get_model()
+        groq_api_key = os.getenv("GROQ_API_KEY", "")
+        if groq_api_key:
+            try:
+                from groq import Groq
+                wav_bytes = _pcm_to_wav(pcm_bytes)
+                client = Groq(api_key=groq_api_key)
+                res = client.audio.transcriptions.create(
+                    file=("audio.wav", wav_bytes),
+                    model="whisper-large-v3-turbo",
+                    response_format="text",
+                    prompt="Mass Drips, streetwear, tees, oversized tees, hoodies, Kollywood, Bollywood, Tollywood, 240 GSM, 380 GSM, Jana Nayagan, Kismat, DRIP10, Rahul",
+                )
+                text = res.strip() if isinstance(res, str) else getattr(res, "text", "").strip()
+                if text:
+                    logger.info(f"Groq STT: '{text}'")
+                    return text
+            except Exception as e:
+                logger.warning(f"Groq STT failed ({e}), attempting local fallback...")
 
-        # Convert PCM → float32 numpy array
-        samples = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32)
-        samples /= 32768.0  # Normalize to [-1.0, 1.0]
+        try:
+            model = cls.get_local_model()
+            samples = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32)
+            samples /= 32768.0
 
-        kwargs = dict(
-            beam_size=3,
-            language=WHISPER_LANG,
-            condition_on_previous_text=False,
-            vad_filter=False,  # We already did VAD — no double filtering
-        )
-        segments, info = model.transcribe(samples, **kwargs)
+            kwargs = dict(
+                beam_size=3,
+                language=WHISPER_LANG,
+                condition_on_previous_text=False,
+                vad_filter=False,
+                initial_prompt="Mass Drips, streetwear, tees, oversized tees, hoodies, Kollywood, Bollywood, Tollywood, 240 GSM, 380 GSM, Jana Nayagan, Kismat, DRIP10, Rahul",
+            )
+            segments, info = model.transcribe(samples, **kwargs)
+            text = " ".join(seg.text.strip() for seg in segments).strip()
 
-        text = " ".join(seg.text.strip() for seg in segments).strip()
-
-        if text:
-            lang = info.language
-            prob = info.language_probability
-            logger.info(f"STT [{lang} {prob:.0%}]: '{text}'")
-        else:
-            logger.debug("STT: silence / no speech detected")
-
-        return text
+            if text:
+                logger.info(f"Local STT: '{text}'")
+            return text
+        except Exception as e:
+            logger.error(f"Local STT error: {e}")
+            return ""
 
 
 async def stt_worker(
@@ -112,18 +117,13 @@ async def stt_worker(
     transcript_queue: asyncio.Queue,
     tenant_id: str,
     lead_id: str,
+    websocket = None,
+    call_transcript: list = None,
 ) -> None:
     """
     Async worker: consumes utterance PCM blobs from stt_queue,
     transcribes them, and puts results on transcript_queue.
-
-    Designed to run as an asyncio.Task per WebSocket session.
-
-    Args:
-        stt_queue:        Source queue — receives raw PCM bytes (one utterance each).
-        transcript_queue: Sink queue   — puts transcribed text strings.
-        tenant_id:        For logging/context.
-        lead_id:          For logging/context.
+    Relays transcript to frontend WebSocket and call transcript log.
     """
     logger.info(f"STT worker started [{tenant_id}/{lead_id}]")
     loop = asyncio.get_event_loop()
@@ -138,12 +138,24 @@ async def stt_worker(
                 stt_queue.task_done()
                 break
 
-            # Run blocking Whisper in a thread to not block the event loop
+            # Run STT in thread pool
             text = await loop.run_in_executor(
                 None, WhisperSTT.transcribe, pcm_bytes
             )
 
             if text:
+                if call_transcript is not None:
+                    call_transcript.append({"role": "user", "text": text})
+
+                if websocket:
+                    try:
+                        await websocket.send_text(json.dumps({
+                            "type": "transcript",
+                            "text": text,
+                        }))
+                    except Exception:
+                        pass
+
                 await transcript_queue.put({
                     "tenant_id":  tenant_id,
                     "lead_id":    lead_id,
