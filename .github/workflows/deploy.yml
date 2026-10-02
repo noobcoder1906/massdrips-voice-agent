@@ -1,0 +1,32 @@
+name: Deploy to AWS EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd massdrips-voice-agent || git clone https://github.com/noobcoder1906/massdrips-voice-agent.git
+            cd massdrips-voice-agent
+            git pull origin main
+            
+            # Setup environment variables
+            echo "GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}" > .env
+            echo "MONGODB_URI=${{ secrets.MONGODB_URI }}" >> .env
+            echo "TTS_PROVIDER=chatterbox_clone" >> .env
+            
+            # Rebuild and run with Docker Compose
+            sudo docker compose up --build -d
