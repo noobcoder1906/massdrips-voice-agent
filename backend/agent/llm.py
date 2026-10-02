@@ -307,6 +307,7 @@ async def llm_worker(
         lead_id:          For logging and context.
     """
     from backend.agent.laya_router import laya_engine
+    from backend.agent.entity_resolver import build_product_context
 
     llm = get_llm_engine()
     conversation_history: list[dict] = []
@@ -369,13 +370,18 @@ async def llm_worker(
             # Build turn-specific system prompt with Laya routing hint injected
             prompt_hint = laya_decision.get("prompt_hint")
             effective_prompt = system_prompt
+
+            # Dynamic entity resolution: map actor/character/film mentions to catalog products
+            entity_context = build_product_context(user_text)
+
+            extra_parts = []
             if prompt_hint:
-                # Append hint to system prompt without rebuilding the full prompt
-                # (rebuilding from DB would require async calls here -- too slow)
-                effective_prompt = (
-                    system_prompt
-                    + f"\n\n[ROUTING HINT for this turn: {prompt_hint}]"
-                )
+                extra_parts.append(f"[ROUTING HINT: {prompt_hint}]")
+            if entity_context:
+                extra_parts.append(f"[ENTITY RESOLVED: {entity_context}]")
+
+            if extra_parts:
+                effective_prompt = system_prompt + "\n\n" + "\n".join(extra_parts)
 
             # â”€â”€ STREAMING EARLY-EMIT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             # Collect tokens. When a sentence boundary is detected, immediately
