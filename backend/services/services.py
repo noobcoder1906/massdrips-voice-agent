@@ -43,7 +43,7 @@ async def create_tenant(data: dict) -> dict:
 import asyncio
 
 DEFAULT_MASS_DRIPS_PERSONA = {
-    "name": "Aria",
+    "name": "Alex",
     "brand": "Mass Drips",
     "language": "hinglish",
     "tone": "friendly, energetic, consultative streetwear expert",

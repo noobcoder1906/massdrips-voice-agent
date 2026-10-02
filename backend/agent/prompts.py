@@ -8,7 +8,7 @@ fluid conversational rules, and context tracking.
 from typing import Optional
 
 DEFAULT_PERSONA = {
-    "name":               "Aria",
+    "name":               "Alex",
     "brand":              "Mass Drips",
     "language":           "english",
     "tone":               "friendly",
@@ -45,7 +45,7 @@ def build_system_prompt(
 ) -> str:
     p = {**DEFAULT_PERSONA, **tenant_config}
     brand    = p.get("brand", "Mass Drips")
-    name     = p.get("name", "Aria")
+    name     = p.get("name", "Alex")
     language = p.get("language", "hinglish")
 
     lead_name = "bhai"

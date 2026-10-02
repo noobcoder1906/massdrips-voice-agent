@@ -73,7 +73,7 @@ logger = logging.getLogger(__name__)
 
 # Ã¢â€â‚¬Ã¢â€â‚¬ Config Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 TTS_PROVIDER    = os.getenv("TTS_PROVIDER", "edge_tts").lower()  # edge_tts | kokoro | kokoro_clone
-TTS_VOICE       = os.getenv("TTS_VOICE", "en-IN-NeerjaExpressiveNeural")  # Edge-TTS voice
+TTS_VOICE       = os.getenv("TTS_VOICE", "en-IN-PrabhatNeural")  # Edge-TTS voice
 TTS_SPEED       = float(os.getenv("TTS_SPEED", "1.08"))           # Slightly fast for phone calls
 TARGET_SAMPLE_RATE = 16000   # 16kHz -- matches STT pipeline + WebSocket expectation
 AUDIO_CHUNK_SIZE = 640        # 20ms of 16kHz 16-bit mono audio per chunk
@@ -451,19 +451,21 @@ class KokoroTTS:
             
         if TTS_PROVIDER == "edge_tts":
             selected_voice = voice
+            if voice in ("en-IN-NeerjaExpressiveNeural", "en-IN-NeerjaNeural"):
+                selected_voice = "en-IN-PrabhatNeural"
             lower = clean.lower()
             if any("ऀ" <= ch <= "ॿ" for ch in clean):
-                selected_voice = "hi-IN-SwaraNeural"
+                selected_voice = "hi-IN-MadhurNeural"
             elif any("஀" <= ch <= "௿" for ch in clean):
-                selected_voice = "ta-IN-PallaviNeural"
+                selected_voice = "ta-IN-ValluvarNeural"
             else:
                 words = set(lower.split())
                 hindi_markers = {"namaste", "haan", "bilkul", "aapko", "kaunsa", "bataiye", "karenge", "bhej", "sakein", "theek", "shukriya", "kya", "main"}
                 tamil_markers = {"vanakkam", "nandri", "pesurom", "irundhu", "ungalukku", "venuma"}
                 if len(words.intersection(hindi_markers)) >= 2:
-                    selected_voice = "hi-IN-SwaraNeural"
+                    selected_voice = "hi-IN-MadhurNeural"
                 elif len(words.intersection(tamil_markers)) >= 1:
-                    selected_voice = "ta-IN-PallaviNeural"
+                    selected_voice = "ta-IN-ValluvarNeural"
 
             mp3_bytes = await cls.synthesize_with_edge_tts(clean, selected_voice, speed)
             if mp3_bytes:

@@ -155,7 +155,7 @@ async def voice_websocket(
         lead_name = "Rahul"
     else:
         lead_name = lead_name.split()[0]
-    agent_name = tenant_config.get("name", "Aria") if tenant_config else "Aria"
+    agent_name = tenant_config.get("name", "Alex") if tenant_config else "Alex"
     brand_name = tenant_config.get("brand", "Mass Drips") if tenant_config else "Mass Drips"
     greeting_text = (
         f"Hey {lead_name}! This is {agent_name} calling from {brand_name} in Chennai. "
