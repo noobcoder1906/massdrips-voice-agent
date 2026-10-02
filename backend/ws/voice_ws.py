@@ -223,13 +223,15 @@ async def voice_websocket(
                 }))
                 await websocket.send_text(json.dumps({"type": "audio_start"}))
 
-                # Stream PCM in 20ms chunks (640 bytes each)
-                # asyncio.sleep(0) yields control so incoming audio isn't blocked
-                for i in range(0, len(pcm), AUDIO_CHUNK_SIZE):
-                    await websocket.send_bytes(pcm[i : i + AUDIO_CHUNK_SIZE])
-                    await asyncio.sleep(0)
+                STREAM_CHUNK = 3200
+                for i in range(0, len(pcm), STREAM_CHUNK):
+                    if my_id <= interrupted_id:
+                        break
+                    await websocket.send_bytes(pcm[i : i + STREAM_CHUNK])
+                    await asyncio.sleep(0.015)
 
-                await websocket.send_text(json.dumps({"type": "audio_end"}))
+                if my_id > interrupted_id:
+                    await websocket.send_text(json.dumps({"type": "audio_end"}))
 
                 logger.info(
                     "[%s] Audio sent: '%s...' (%d bytes)",
