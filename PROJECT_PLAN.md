@@ -729,3 +729,44 @@ docker run -d --name voxsales-redis -p 6379:6379 redis:7-alpine
 
 > **Mass Drips is Client #1. The rest of the market is your opportunity.**
 > **Hit Proceed to start building Phase 1.**
+
+---
+
+## ? Laya Decision Engine Integration & Routing Architecture
+
+### Why Laya in VoxSales?
+Laya (developed by ConvAI Innovations) is a non-autoregressive "System 1" decision model built on ModernBERT-large that evaluates input states against typed primitives (Choice, Score, Noul) in **~33ms on GPU**.
+
+In VoxSales, routing every utterance through a 3B+ generative LLM introduces unnecessary latency and token costs for binary/rule decisions. Integrating Laya provides **ultra-fast pre-LLM circuit breaking, real-time objection detection, and zero-cost post-call lead scoring**.
+
+`
+                         [User Speech Audio]
+                                  ¦
+                           [Silero VAD (32ms)]
+                                  ¦
+                        [Faster-Whisper STT]
+                                  ¦
+                       [User Speech Transcript]
+                                  ¦
+                                  ?
+                     +--------------------------+
+                     ¦   Laya Decision Engine   ¦ ~33ms
+                     ¦(backend/agent/laya_router)¦
+                     +--------------------------+
+                                  ¦
+             +--------------------+--------------------+
+             ?                    ?                    ?
+     [DNC / Handoff?]    [Objection Detected?]  [General Query]
+             ¦                    ¦                    ¦
+    Bypass LLM (33ms)      Inject Strategy       Pass to Ollama LLM
+  Instant Audio Stream    Prompt to Ollama LLM     Streaming Reply
+`
+
+### ?? Key Integration Points:
+1. **Pre-LLM Fast Circuit Breaker (ackend/agent/laya_router.py)**:
+   - Classifies caller intent in ~33ms (dnc_request, human_handoff, price_query, sizing_inquiry).
+   - If user requests DNC or human handoff, bypasses the main LLM to stream instant audio acknowledgement in <50ms.
+2. **Mid-Dialogue Objection Detection**:
+   - Detects price/sizing objections in ~33ms and dynamically injects target objection-handling prompts into the LLM system prompt.
+3. **Sub-50ms Accelerated Post-Call Lead Scoring (ackend/agent/lead_scorer.py)**:
+   - Uses Laya's Choice and Score primitives to calculate 0–100 lead scores, sentiment, and outcomes with zero LLM token cost.
