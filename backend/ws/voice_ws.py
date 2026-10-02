@@ -239,7 +239,7 @@ async def voice_websocket(
                         logger.info("[%s] Audio play cancelled due to barge-in on turn %d", session_id, this_turn)
                         break
                     await websocket.send_bytes(pcm[i : i + STREAM_CHUNK])
-                    await asyncio.sleep(0.015)
+                    await asyncio.sleep(0)  # yield event loop without artificial delay
 
                 if this_turn > interrupted_turn[0]:
                     await websocket.send_text(json.dumps({"type": "audio_end"}))

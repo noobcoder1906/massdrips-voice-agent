@@ -162,6 +162,29 @@ _PURCHASE_PATTERNS = [
     r"\b(cod|cash\s+on\s+delivery|upi|pay|payment)\b",
     r"\b(address|deliver|shipping|send\s+karo)\b",
 ]
+# ── Product / catalog inquiry patterns ────────────────────────────────────────
+_PRODUCT_PATTERNS = [
+    r"\b(jhukega|jhukke|jukhega|jukhke|sala|saala)\b",        # Jhukega Nahi Saala
+    r"\b(pushpa|flower\s+nahi|fire)\b",
+    r"\b(jana\s+nayagan|nayagan)\b",
+    r"\b(thalapathy|vijay|leo\b)\b",
+    r"\b(ajit|thala|don)\b",
+    r"\b(main\s+rukta|rukta\s+nahi)\b",
+    r"\b(kismat)\b",
+    r"\b(shadows|forge)\b",
+    r"\b(collection|catalog|designs?|tshirt|tee|hoodie|sweatshirt)\b",
+    r"\b(kaunsa|konsa|kaun\s+sa|show|dekh|dekha)\b",
+]
+
+# ── Bundle / set / combo patterns ─────────────────────────────────────────────
+_BUNDLE_PATTERNS = [
+    r"\b(set|combo|bundle|pair|pack|2\s+piece|two\s+piece)\b",
+    r"\b(bulk|multiple|both|ek\s+saath|together)\b",
+    r"\b(minimum|minimum\s+order|atleast|min\s+order)\b",
+    r"\b(club|group|combine|offer\s+karo)\b",
+]
+
+
 
 
 def _match_patterns(text: str, patterns: list) -> bool:
@@ -271,7 +294,7 @@ class LayaDecisionEngine:
                 "intent":        "dnc_request",
                 "confidence":    0.97,
                 "bypass_llm":    True,
-                "fast_response": "Bilkul samjha. Aapka number hamare list se remove kar diya gaya hai. Bahut sorry for the disturbance.",
+                "fast_response": "Got it, I'm removing your number from our list right away. Really sorry for the trouble. Take care!",
                 "prompt_hint":   None,
             }
 
@@ -299,7 +322,37 @@ class LayaDecisionEngine:
                 ),
             }
 
-        # Priority 4: Purchase Intent (high value -- LLM with encouraging hint)
+        # Priority 4a: Product / Catalog Inquiry (product by name or category)
+        if _match_patterns(clean, _PRODUCT_PATTERNS):
+            return {
+                "intent":        "product_inquiry",
+                "confidence":    0.92,
+                "bypass_llm":    False,
+                "fast_response": None,
+                "prompt_hint":   (
+                    "PRODUCT INQUIRY: User is asking about a specific design or category. "
+                    "Use the catalog fuzzy match rules in your knowledge to find the CLOSEST product. "
+                    "NEVER say 'we don't have that' — always match to nearest product. "
+                    "State name, price, and collection. Then ask if they want details on WhatsApp."
+                ),
+            }
+
+        # Priority 4b: Bundle / Set / Combo inquiry
+        if _match_patterns(clean, _BUNDLE_PATTERNS):
+            return {
+                "intent":        "bundle_inquiry",
+                "confidence":    0.90,
+                "bypass_llm":    False,
+                "fast_response": None,
+                "prompt_hint":   (
+                    "BUNDLE INQUIRY: User is asking about sets, combos, or minimum orders. "
+                    "Offer: 'Any 2 tees for Rs 1299 — that saves you Rs 99!' "
+                    "For larger orders offer to WhatsApp a custom catalog + quote. "
+                    "Keep it conversational and brief."
+                ),
+            }
+
+        # Priority 4c: Purchase Intent (high value -- LLM with encouraging hint)
         if _match_patterns(clean, _PURCHASE_PATTERNS):
             return {
                 "intent":        "purchase_intent",

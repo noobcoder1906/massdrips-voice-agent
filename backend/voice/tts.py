@@ -583,8 +583,8 @@ async def tts_worker(
                 if not sentence:
                     continue
 
-                # Synthesize each sentence independently for low latency streaming
-                pcm = await KokoroTTS.synthesize_to_pcm_async(
+                # Route through full TTS provider (edge_tts -> PrabhatNeural for voice match)
+                pcm = await KokoroTTS.route_tts(
                     sentence,
                     TTS_VOICE,
                     TTS_SPEED,
