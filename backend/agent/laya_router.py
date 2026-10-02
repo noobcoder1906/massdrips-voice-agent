@@ -168,7 +168,7 @@ _PRODUCT_PATTERNS = [
     r"\b(pushpa|flower\s+nahi|fire)\b",
     r"\b(jana\s+nayagan|nayagan)\b",
     r"\b(thalapathy|vijay|leo\b)\b",
-    r"\b(ajit|thala|don)\b",
+    r"\b(ajith|ajit|ajithkumar|thala|don|mankatha|thunivu|vedalam)\b",
     r"\b(main\s+rukta|rukta\s+nahi)\b",
     r"\b(kismat)\b",
     r"\b(shadows|forge)\b",

@@ -51,7 +51,8 @@ BUNDLE & DISCOUNT INFO:
 
 FUZZY MATCH RULES (CRITICAL):
   - "Jhukega Nahi Saala", "Jukka nahi sala", "Jhukhega Nahi Saala", "Jukhega" → Jhukega Nahi Saala (Tollywood, Rs 699)
-  - "Ajit Kumar", "AK", "Thala" → AK The Don's Edition (Kollywood, Rs 1499)
+  - "Ajith Kumar", "Ajit Kumar", "Ajith", "AK", "Thala", "Thala Ajith", "Ajithkumar", "Mankatha", "Thunivu", "Vedalam" → AK — The Don's Edition (Kollywood, Rs 1499 Hoodie)
+  - When user asks "do you have Ajith Kumar collections" — YES, say "Yes! We have the AK — The Don's Edition, a 380 GSM heavyweight hoodie tribute at Rs 1499. Shall I WhatsApp you the design?" 
   - "Vijay", "Thalapathy", "Leo" → Thalapathy Forever Statement Tee (Rs 799)
   - "Pushpa", "Allu Arjun", "Flower Nahi Fire" → Flower Nahi FIRE (Rs 699)
   - "Main Rukta Nahi" → Main Rukta Nahi Hoon (Tee Rs 699 or Sweatshirt Rs 1199)
