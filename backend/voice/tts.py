@@ -86,7 +86,19 @@ class KokoroTTS:
         if cls._kokoro is None:
             from kokoro_onnx import Kokoro
             logger.info("Loading Kokoro TTS ONNX model...")
-            cls._kokoro = Kokoro("kokoro-v1.0.onnx", "voices-v1.0.bin")
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            models_dir = os.path.join(base_dir, "models")
+            
+            # Check models directory first, then root / cwd
+            model_path = os.path.join(models_dir, "kokoro-v1.0.onnx")
+            voices_path = os.path.join(models_dir, "voices-v1.0.bin")
+            
+            if not os.path.exists(model_path):
+                model_path = "kokoro-v1.0.onnx"
+            if not os.path.exists(voices_path):
+                voices_path = "voices-v1.0.bin"
+                
+            cls._kokoro = Kokoro(model_path, voices_path)
             logger.info("Kokoro TTS loaded successfully.")
         return cls._kokoro
 

@@ -36,6 +36,11 @@ from backend.voice.stt import stt_worker
 from backend.voice.tts import tts_worker
 from backend.agent.llm import llm_worker
 from backend.agent.prompts import build_system_prompt, DEFAULT_PERSONA
+from backend.services.services import (
+    get_tenant_persona,
+    get_lead_context,
+    get_products_for_tenant,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,26 +48,6 @@ router = APIRouter()
 
 # Chunk size for streaming audio back (20ms @ 16kHz = 640 bytes)
 AUDIO_CHUNK_SIZE = 640
-
-
-def _get_tenant_config(tenant_id: str) -> dict:
-    """TODO Phase 5: Load from MongoDB. Returns default config for now."""
-    return {**DEFAULT_PERSONA, "tenant_id": tenant_id}
-
-
-def _get_lead_info(lead_id: str) -> dict:
-    """TODO Phase 5: Load from MongoDB. Returns placeholder for now."""
-    return {
-        "id":    lead_id,
-        "name":  "Customer",
-        "interests": [],
-        "last_interaction_summary": "",
-    }
-
-
-def _get_products(tenant_id: str) -> list:
-    """TODO Phase 5: Load from MongoDB product catalog."""
-    return []
 
 
 @router.websocket("/ws/voice/{tenant_id}/{lead_id}")
@@ -88,9 +73,9 @@ async def voice_websocket(
     logger.info(f"[{tenant_id}/{lead_id}] WebSocket connected.")
 
     # ── Build tenant system prompt ──────────────────────────────────────────
-    tenant_config = _get_tenant_config(tenant_id)
-    lead_info     = _get_lead_info(lead_id)
-    products      = _get_products(tenant_id)
+    tenant_config = await get_tenant_persona(tenant_id)
+    lead_info     = await get_lead_context(lead_id, tenant_id)
+    products      = await get_products_for_tenant(tenant_id, in_stock_only=True, limit=10)
     system_prompt = build_system_prompt(
         tenant_config=tenant_config,
         lead_info=lead_info,

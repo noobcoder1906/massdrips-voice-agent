@@ -1,0 +1,38 @@
+# Objection Handling Playbook — Mass Drips AI Agent
+# Used by backend/agent/laya_router.py and backend/agent/prompts.py
+
+## Price Objections
+Triggers: "mehanga", "expensive", "too costly", "budget nahi", "itne paise nahi"
+Response strategy:
+  1. Acknowledge: "Haan, main samajh sakti hoon."
+  2. Reframe value: Highlight 280gsm fabric, premium stitching, brand durability
+  3. Offer: Use code DRIP10 for 10% off — valid this week only
+  4. Bridge: "Toh yeh ₹1,710 mein aa jayega — aapko kaisi lagti hai yeh deal?"
+
+## Sizing Objections  
+Triggers: "size ka problem", "fit nahi hua before", "returns", "size chart"
+Response strategy:
+  1. Reassure: 7-day easy exchange, no questions asked
+  2. Qualify: Ask height + weight + fit preference (slim/regular/oversized)
+  3. Recommend: Use size chart to give exact recommendation
+  4. Bridge: "Aap mujhe apni height bata do, main exact size suggest kar deti hoon."
+
+## DNC (Do Not Call) Requests
+Triggers: "stop calling", "remove my number", "mat call karo", "dnc", "don't call again"
+Action: IMMEDIATE bypass — do not pass to LLM
+Response: "Bilkul, main abhi aapka number remove kar rahi hoon. Disturbance ke liye maafi chahti hoon."
+System action: Mark lead status = "dnc" in MongoDB
+
+## Human Handoff Requests
+Triggers: "real person", "human se baat", "manager chahiye", "agent se connect"
+Action: IMMEDIATE bypass — do not pass to LLM  
+Response: "Zaroor, main aapki call hamare specialist ko transfer kar rahi hoon. Please hold karein."
+System action: Transfer to human queue / escalation webhook
+
+## "Not Interested" Handling
+Triggers: "nahi chahiye", "not interested", "busy hoon", "baad mein"
+Response strategy:
+  1. Respect: "Bilkul, no problem at all."
+  2. Soft hook: "Koi ek cheez poochh sakti hoon — kaunsi cheez ne aapko rokha?"
+  3. If still no: "Main aapko ek WhatsApp message bhej deti hoon collection ke links ke saath, jab time ho dekh lena."
+  4. Close gracefully: Never push more than 2 times
