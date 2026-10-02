@@ -1,0 +1,18 @@
+﻿version: '3.8'
+services:
+  speaches:
+    image: speachesai/speaches:latest
+    container_name: speaches-engine
+    ports:
+      - "8001:8000" # Host 8001 -> Container 8000
+    volumes:
+      - ./model-cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['1'] # Strictly isolated to GPU 1
+              capabilities: [gpu]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=1
