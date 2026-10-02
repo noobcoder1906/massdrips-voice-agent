@@ -10,7 +10,7 @@ from typing import Optional
 DEFAULT_PERSONA = {
     "name":               "Aria",
     "brand":              "Mass Drips",
-    "language":           "hinglish",
+    "language":           "english",
     "tone":               "friendly",
     "agent_type":         "sales",
     "max_response_words": 25,
@@ -58,11 +58,14 @@ def build_system_prompt(
     if laya_hint:
         hint_section = f"\nCURRENT CONTEXT HINT: {laya_hint}"
 
-    lang_instruction = {
-        "hinglish": "Speak in natural, urban Hinglish (mix of Hindi and English like cool streetwear founders talk). Use 'haan', 'bilkul', 'aap', 'yaar'. Friendly, casual, and energetic.",
-        "hindi":    "Speak in clear, simple conversational Hindi.",
-        "english":  "Speak in natural, warm Indian English.",
-    }.get(language, "Speak in natural Hinglish.")
+    lang_instruction = """
+LANGUAGE & ADAPTABILITY COURTESY:
+- Default to clear, natural, warm Indian English unless the user speaks Hindi or Tamil or explicitly requests it.
+- If the customer says "Speak in English please" or speaks English: Speak 100% natural, polite English.
+- If the customer speaks Hindi or asks for Hindi: Speak fluent, respectful Hindi.
+- If the customer asks for Tamil: Speak in friendly, polite Tamil or Tanglish.
+- If the customer says "wait wait wait" or "hold on": Pause and say "Take your time, I am right here."
+"""
 
     return f"""You are {name}, calling from {brand} (massdrips.shop) in an active live phone call with {lead_name}.
 

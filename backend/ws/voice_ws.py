@@ -157,7 +157,10 @@ async def voice_websocket(
         lead_name = lead_name.split()[0]
     agent_name = tenant_config.get("name", "Aria") if tenant_config else "Aria"
     brand_name = tenant_config.get("brand", "Mass Drips") if tenant_config else "Mass Drips"
-    greeting_text = f"Hey {lead_name}! This is {agent_name} calling from {brand_name}. How are you doing today?"
+    greeting_text = (
+        f"Hey {lead_name}! This is {agent_name} calling from {brand_name} in Chennai. "
+        f"Did I catch you at an okay time for 30 seconds? Also, are you comfortable in English, or would you prefer Hindi or Tamil?"
+    )
 
     stt_task = asyncio.create_task(
         stt_worker(
@@ -240,13 +243,23 @@ async def voice_websocket(
 
     audio_task = asyncio.create_task(send_audio_loop())
 
-    # Enqueue opening greeting so it plays immediately on connect
-    await response_queue.put({
-        "tenant_id": tenant_id,
-        "lead_id": lead_id,
-        "user_text": "[CALL_STARTED]",
-        "response": greeting_text,
-    })
+    # Immediate zero-latency greeting delivery using cached audio
+    from backend.voice.tts import get_cached_greeting_pcm
+    greeting_pcm = await get_cached_greeting_pcm(greeting_text)
+    if greeting_pcm:
+        await audio_queue.put({
+            "tenant_id": tenant_id,
+            "lead_id": lead_id,
+            "pcm": greeting_pcm,
+            "text": greeting_text,
+        })
+    else:
+        await response_queue.put({
+            "tenant_id": tenant_id,
+            "lead_id": lead_id,
+            "user_text": "[CALL_STARTED]",
+            "response": greeting_text,
+        })
 
     # ── Main receive loop ────────────────────────────────────────────────────
     # Handles two input types:

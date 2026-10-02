@@ -450,7 +450,22 @@ class KokoroTTS:
         #     logger.warning("ElevenLabs failed, falling back to local TTS")
             
         if TTS_PROVIDER == "edge_tts":
-            mp3_bytes = await cls.synthesize_with_edge_tts(clean, voice, speed)
+            selected_voice = voice
+            lower = clean.lower()
+            if any("ऀ" <= ch <= "ॿ" for ch in clean):
+                selected_voice = "hi-IN-SwaraNeural"
+            elif any("஀" <= ch <= "௿" for ch in clean):
+                selected_voice = "ta-IN-PallaviNeural"
+            else:
+                words = set(lower.split())
+                hindi_markers = {"namaste", "haan", "bilkul", "aapko", "kaunsa", "bataiye", "karenge", "bhej", "sakein", "theek", "shukriya", "kya", "main"}
+                tamil_markers = {"vanakkam", "nandri", "pesurom", "irundhu", "ungalukku", "venuma"}
+                if len(words.intersection(hindi_markers)) >= 2:
+                    selected_voice = "hi-IN-SwaraNeural"
+                elif len(words.intersection(tamil_markers)) >= 1:
+                    selected_voice = "ta-IN-PallaviNeural"
+
+            mp3_bytes = await cls.synthesize_with_edge_tts(clean, selected_voice, speed)
             if mp3_bytes:
                 return await loop.run_in_executor(None, _mp3_to_pcm16k, mp3_bytes)
             logger.warning("Edge-TTS failed, falling back to local TTS")
@@ -590,3 +605,15 @@ async def tts_worker(
 
     except asyncio.CancelledError:
         logger.info("TTS worker cancelled [%s/%s]", tenant_id, lead_id)
+
+
+_GREETING_CACHE: dict = {}
+
+async def get_cached_greeting_pcm(text: str, voice: str = "en-IN-NeerjaNeural") -> bytes:
+    key = (text, voice)
+    if key in _GREETING_CACHE:
+        return _GREETING_CACHE[key]
+    pcm = await KokoroTTS.synthesize_to_pcm_async(text, voice=voice)
+    if pcm:
+        _GREETING_CACHE[key] = pcm
+    return pcm

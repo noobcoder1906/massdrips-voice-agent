@@ -99,6 +99,22 @@ except ImportError:
     )
 
 # ── DNC keyword patterns (multi-language: Hindi, Hinglish, English) ──────────
+_WAIT_PATTERNS = [
+    r"\b(wait|hold on|one sec|one second|ruk|ruko|suno)\b",
+]
+
+_LANG_ENGLISH_PATTERNS = [
+    r"\b(speak in english|english please|in english|talk in english|switch to english|english)\b",
+]
+
+_LANG_HINDI_PATTERNS = [
+    r"\b(hindi mein|hindi please|speak in hindi|talk in hindi|hindi)\b",
+]
+
+_LANG_TAMIL_PATTERNS = [
+    r"\b(tamil la|tamil please|speak in tamil|talk in tamil|tamil)\b",
+]
+
 _DNC_PATTERNS = [
     r"\b(stop|remove|unsubscribe|opt.?out)\b",
     r"\b(mat|mत|मत)\s*(call|bol|karo|karna)\b",
@@ -210,6 +226,44 @@ class LayaDecisionEngine:
               "prompt_hint"   : str | None -- context hint to inject into LLM prompt
         """
         clean = text.lower().strip()
+
+        # Priority: Wait / Hold request (Attentive salesperson decency)
+        if _match_patterns(clean, _WAIT_PATTERNS):
+            return {
+                "intent":        "wait_hold",
+                "confidence":    0.95,
+                "bypass_llm":    True,
+                "fast_response": "Sure, take your time! I'm right here whenever you're ready.",
+                "prompt_hint":   None,
+            }
+
+        # Priority: Language preference request
+        if _match_patterns(clean, _LANG_ENGLISH_PATTERNS):
+            return {
+                "intent":        "language_switch_english",
+                "confidence":    0.98,
+                "bypass_llm":    False,
+                "fast_response": None,
+                "prompt_hint":   "COLD CALL DECENCY: The customer asked to speak in English. Apologize politely for not asking first, and respond in clean, polite Indian English.",
+            }
+
+        if _match_patterns(clean, _LANG_HINDI_PATTERNS):
+            return {
+                "intent":        "language_switch_hindi",
+                "confidence":    0.98,
+                "bypass_llm":    False,
+                "fast_response": None,
+                "prompt_hint":   "COLD CALL DECENCY: The customer asked to speak in Hindi. Apologize politely and continue in warm, conversational Hindi.",
+            }
+
+        if _match_patterns(clean, _LANG_TAMIL_PATTERNS):
+            return {
+                "intent":        "language_switch_tamil",
+                "confidence":    0.98,
+                "bypass_llm":    False,
+                "fast_response": None,
+                "prompt_hint":   "COLD CALL DECENCY: The customer asked to speak in Tamil. Greet them in polite conversational Tamil or Tanglish.",
+            }
 
         # Priority 1: DNC Request (Circuit Breaker -- highest priority)
         if _match_patterns(clean, _DNC_PATTERNS):
