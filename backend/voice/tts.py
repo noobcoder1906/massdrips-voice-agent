@@ -578,26 +578,54 @@ async def tts_worker(
             logger.info("TTS synthesizing [%s/%s]: '%s'", tenant_id, lead_id, response_text[:80])
 
             sentence_count = 0
-            for sentence in iter_sentences(response_text):
-                sentence = sentence.strip()
-                if not sentence:
-                    continue
 
-                # Route through full TTS provider (edge_tts -> PrabhatNeural for voice match)
-                pcm = await KokoroTTS.route_tts(
-                    sentence,
-                    TTS_VOICE,
-                    TTS_SPEED,
-                )
+            if TTS_PROVIDER == "chatterbox_clone":
+                # ── Dual-Track Pipeline: race-to-play + pre-synthesis queue ──
+                from backend.voice.chatterbox_pipeline import create_synthesizer
+                synth = create_synthesizer()
+                await synth.start()
 
-                if pcm:
+                # Feed all sentences into synthesizer upfront
+                for sentence in iter_sentences(response_text):
+                    sentence = sentence.strip()
+                    if sentence:
+                        await synth.push(sentence)
+                await synth.close()  # signals end of input
+
+                # Drain synthesized audio in order
+                while True:
+                    pcm = await synth.next_audio()
+                    if pcm is None:
+                        break
+                    # Find corresponding sentence for transcript display
+                    sentence_count += 1
                     await audio_queue.put({
                         "tenant_id": tenant_id,
                         "lead_id":   lead_id,
                         "pcm":       pcm,
-                        "text":      sentence,
+                        "text":      response_text,
                     })
-                    sentence_count += 1
+            else:
+                # ── Standard path: edge_tts / kokoro per sentence ────────────
+                for sentence in iter_sentences(response_text):
+                    sentence = sentence.strip()
+                    if not sentence:
+                        continue
+
+                    pcm = await KokoroTTS.route_tts(
+                        sentence,
+                        TTS_VOICE,
+                        TTS_SPEED,
+                    )
+
+                    if pcm:
+                        await audio_queue.put({
+                            "tenant_id": tenant_id,
+                            "lead_id":   lead_id,
+                            "pcm":       pcm,
+                            "text":      sentence,
+                        })
+                        sentence_count += 1
 
             logger.info(
                 "TTS [%s/%s]: %d sentence(s) synthesized from '%s'",
