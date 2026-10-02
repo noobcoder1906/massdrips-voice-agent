@@ -144,9 +144,16 @@ async def voice_websocket(
     response_queue   = asyncio.Queue()   # LLM     --> TTS worker
     audio_queue      = asyncio.Queue()   # TTS     --> audio sender
 
+    current_turn = [0]
+    interrupted_turn = [-1]
+
+    def handle_barge_in():
+        interrupted_turn[0] = current_turn[0]
+        logger.info("[%s] User barge-in detected during turn %d", session_id, current_turn[0])
+
     # ── VAD instance ─────────────────────────────────────────────────────────
     # One SileroVAD instance per session (maintains per-call LSTM state).
-    vad = VoiceActivityDetector(output_queue=stt_queue)
+    vad = VoiceActivityDetector(output_queue=stt_queue, on_speech_start=handle_barge_in)
 
     # ── Background pipeline workers ──────────────────────────────────────────
         # Outbound live call opening greeting
@@ -223,14 +230,18 @@ async def voice_websocket(
                 }))
                 await websocket.send_text(json.dumps({"type": "audio_start"}))
 
+                current_turn[0] += 1
+                this_turn = current_turn[0]
+
                 STREAM_CHUNK = 3200
                 for i in range(0, len(pcm), STREAM_CHUNK):
-                    if my_id <= interrupted_id:
+                    if this_turn <= interrupted_turn[0]:
+                        logger.info("[%s] Audio play cancelled due to barge-in on turn %d", session_id, this_turn)
                         break
                     await websocket.send_bytes(pcm[i : i + STREAM_CHUNK])
                     await asyncio.sleep(0.015)
 
-                if my_id > interrupted_id:
+                if this_turn > interrupted_turn[0]:
                     await websocket.send_text(json.dumps({"type": "audio_end"}))
 
                 logger.info(
