@@ -2,7 +2,7 @@
  * VoxSales Client Dashboard Application Logic
  */
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = '';
 let currentTenantId = '6abd262975108fde8f7b524c';
 
 document.addEventListener('DOMContentLoaded', () => {
