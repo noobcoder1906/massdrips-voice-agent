@@ -67,3 +67,26 @@ async def get_webhook_config(
             "webhook_active": tenant.get("webhook_active", False)
         }
     )
+
+from fastapi import Request
+from fastapi.responses import Response
+import os
+
+@router.post("/twilio/incoming")
+async def twilio_incoming(request: Request):
+    form_data = await request.form()
+    call_sid = form_data.get("CallSid", "unknown")
+    
+    tenant_id = "6abd262975108fde8f7b524c"
+    lead_id = "twilio_" + call_sid
+    
+    server_host = os.getenv("SERVER_HOST", "164.52.212.94:8000")
+    ws_url = f"ws://{server_host}/ws/voice/{tenant_id}/{lead_id}"
+    
+    twiml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Connect>
+        <Stream url="{ws_url}" />
+    </Connect>
+</Response>'''
+    return Response(content=twiml, media_type="text/xml")
