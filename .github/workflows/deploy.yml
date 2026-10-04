@@ -1,4 +1,4 @@
-name: Deploy to AWS EC2
+name: Deploy to E2E GPU Node
 
 on:
   push:
@@ -12,21 +12,28 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Deploy to EC2
+      - name: Deploy to Server
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.EC2_HOST }}
-          username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
+          username: root
+          password: ${{ secrets.EC2_PASSWORD }}
           script: |
-            cd massdrips-voice-agent || git clone https://github.com/noobcoder1906/massdrips-voice-agent.git
+            # Clone or pull latest code
+            if [ ! -d "massdrips-voice-agent" ]; then
+              git clone https://github.com/noobcoder1906/massdrips-voice-agent.git
+            fi
             cd massdrips-voice-agent
             git pull origin main
             
-            # Setup environment variables
+            # Setup environment variables (injecting Twilio too)
             echo "GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}" > .env
-            echo "MONGODB_URI=${{ secrets.MONGODB_URI }}" >> .env
+            echo "MONGO_URI=${{ secrets.MONGODB_URI }}" >> .env
+            echo "TELEPHONY_PROVIDER=twilio" >> .env
+            echo "TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}" >> .env
+            echo "TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}" >> .env
+            echo "TWILIO_PHONE_NUMBER=${{ secrets.TWILIO_PHONE_NUMBER }}" >> .env
             echo "TTS_PROVIDER=chatterbox_clone" >> .env
             
-            # Rebuild and run with Docker Compose
-            sudo docker compose up --build -d
+            # Ensure docker and nvidia drivers are ready
+            docker compose up --build -d
