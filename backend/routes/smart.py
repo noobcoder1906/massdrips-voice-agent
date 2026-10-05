@@ -236,7 +236,7 @@ async def fast_turn_endpoint(request: Request):
         }
 
     # 2. LLM response generation with Mass Drips knowledge
-    tenant_config = {"name": "Aria", "brand": "MASS DRIPS"}
+    tenant_config = {"name": "Sai", "brand": "MASS DRIPS"}
     lead_info = {"name": resolved_lead_name}
     system_prompt = build_system_prompt(tenant_config=tenant_config, lead_info=lead_info)
     rag_context = rag.retrieve(user_text)

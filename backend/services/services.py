@@ -135,7 +135,7 @@ async def get_tenant_persona(tenant_id: str) -> dict:
         return DEFAULT_MASS_DRIPS_PERSONA
     persona = tenant.get("persona", {})
     return {
-        "name": persona.get("agent_name", "Aria"),
+        "name": persona.get("agent_name", "Sai"),
         "brand": persona.get("brand_name", tenant.get("name", "Mass Drips")),
         "language": persona.get("language", "hinglish"),
         "tone": persona.get("tone", "friendly"),

@@ -210,7 +210,7 @@ export default function Discover() {
                   </div>
                   <div>
                     <p className="text-white/40 text-[10px]">Persona</p>
-                    <p className="text-sm font-bold text-emerald-400">Aria (Hinglish)</p>
+                    <p className="text-sm font-bold text-emerald-400">Sai (Hinglish)</p>
                   </div>
                 </div>
               </Card>

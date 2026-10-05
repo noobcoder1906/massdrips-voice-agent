@@ -71,7 +71,7 @@ python -m backend.scripts.seed_db
 ```
 
 This creates:
-- **Mass Drips** tenant with `Aria` persona (Hinglish, friendly)
+- **Mass Drips** tenant with `Sai` persona (Hinglish, friendly)
 - 5 sample leads
 - 8 sample products (hoodies, tees, cargo pants, etc.)
 - MongoDB indexes

@@ -20,7 +20,7 @@ MASS_DRIPS_TENANT = {
     "phone":     "+91-9999999999",
     "slug":      "mass-drips",
     "persona": {
-        "agent_name":  "Aria",
+        "agent_name":  "Sai",
         "brand_name":  "Mass Drips",
         "language":    "hinglish",
         "tone":        "friendly",

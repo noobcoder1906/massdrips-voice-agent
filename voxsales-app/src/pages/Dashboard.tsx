@@ -29,7 +29,7 @@ export default function Dashboard() {
 
   const fetchStoreKnowledge = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/v1/smart/store-knowledge');
+      const res = await fetch('https://voice.massdrips.shop/api/v1/smart/store-knowledge');
       if (res.ok) {
         const data = await res.json();
         setStoreData(data);
@@ -42,7 +42,7 @@ export default function Dashboard() {
     if (!websiteUrl.trim()) return;
     setIsSyncing(true);
     try {
-      const res = await fetch('http://localhost:8000/api/v1/smart/sync-website', {
+      const res = await fetch('https://voice.massdrips.shop/api/v1/smart/sync-website', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: websiteUrl })
@@ -148,7 +148,7 @@ export default function Dashboard() {
             <p className="text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Brand Voice Status</p>
             <div className="flex items-center gap-2">
               <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-              <span className="text-xs font-bold text-white">Aria (Mass Drips)</span>
+              <span className="text-xs font-bold text-white">Sai (Mass Drips)</span>
             </div>
             <p className="text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>Language: Hinglish / English</p>
             <div className="pt-2" style={{ borderTop: '1px solid var(--color-border)' }}>
@@ -300,7 +300,7 @@ export default function Dashboard() {
                     </div>
                     <p className="text-sm font-semibold text-white">No calls processed yet</p>
                     <p className="text-xs text-white/50 max-w-sm mx-auto">
-                      Click the "Start Live Voice Call" button above or select a lead below to test a live call with Aria. Real transcripts and insights will appear here!
+                      Click the "Start Live Voice Call" button above or select a lead below to test a live call with Sai. Real transcripts and insights will appear here!
                     </p>
                     <Button size="sm" variant="primary" onClick={() => setCallModalOpen(true)}>
                       Launch Test Call Now
@@ -412,20 +412,29 @@ export default function Dashboard() {
           {/* Mass Drips Catalog Snapshot */}
           <Card>
             <CardHeader>
-              <CardTitle>Active Catalog in Agent Memory</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle>Active Catalog in Agent Memory</CardTitle>
+                <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full font-medium">100% Synced</span>
+              </div>
             </CardHeader>
-            <div className="space-y-2.5 text-xs">
-              {[
-                { name: 'Acid Wash Oversized Tee', price: '₹1,299', stock: 'In Stock (M, L, XL)' },
-                { name: 'Heavyweight Boxy Hoodie', price: '₹1,899', stock: 'In Stock (380 GSM)' },
-                { name: 'Tactical Cargo Joggers', price: '₹2,499', stock: 'In Stock (Olive)' },
-              ].map((p) => (
-                <div key={p.name} className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/10">
+            <div className="space-y-2 text-xs max-h-72 overflow-y-auto pr-1">
+              {(storeData?.products || [
+                { name: 'Jana Nayagan — Crowd Edition', price: 699, gsm: '240 GSM Tee', category: 'Kollywood', badge: 'HOT' },
+                { name: 'In The Shadows We Forge', price: 1499, gsm: '240 GSM Hoodie', category: 'Heavyweights', badge: 'BESTSELLER' },
+                { name: 'AK — The Don\'s Edition (380 GSM)', price: 1499, gsm: '380 GSM Fleece Drop', category: 'Kollywood', badge: 'LIMITED' },
+                { name: 'Thalapathy Forever Statement Tee', price: 799, gsm: '240 GSM Statement Tee', category: 'Kollywood', badge: 'BESTSELLER' },
+                { name: 'Main Rukta Nahi Hoon (Sweatshirt)', price: 1199, gsm: '240 GSM Sweatshirt', category: 'Bollywood', badge: 'NEW' },
+                { name: 'Flower Nahi, FIRE (Pushpa)', price: 699, gsm: '240 GSM Wildfire Tee', category: 'Tollywood', badge: 'HOT' }
+              ]).map((item: any, i: number) => (
+                <div key={i} className="flex items-center justify-between p-2 rounded bg-white/[0.02] border border-white/5 hover:border-emerald-500/30 transition-all">
                   <div>
-                    <p className="text-white font-medium">{p.name}</p>
-                    <p className="text-white/40 text-[10px]">{p.stock}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="font-semibold text-white truncate max-w-[150px]">{item.name}</p>
+                      {item.badge && <span className="text-[9px] px-1 rounded bg-emerald-500/20 text-emerald-300 font-bold">{item.badge}</span>}
+                    </div>
+                    <p className="text-[10px] text-white/40">{item.gsm || item.category || 'Mass Drips Drop'}</p>
                   </div>
-                  <span className="font-bold text-emerald-400">{p.price}</span>
+                  <span className="font-bold text-emerald-400">Rs {item.price}</span>
                 </div>
               ))}
             </div>

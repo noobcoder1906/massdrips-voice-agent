@@ -34,7 +34,7 @@ export const mockLeads = [
 ];
 
 export const mockCallLogs = [
-  { id: 'CALL-001', lead: 'Rahul Sharma', phone: '+91 98765 43210', duration: '2m 12s', outcome: 'converted', sentiment: 'positive', score: 91, date: 'Today, 10:24 AM', transcript: 'Agent Aria greeted warmly and offered a Drip Hoodie deal...' },
+  { id: 'CALL-001', lead: 'Rahul Sharma', phone: '+91 98765 43210', duration: '2m 12s', outcome: 'converted', sentiment: 'positive', score: 91, date: 'Today, 10:24 AM', transcript: 'Agent Sai greeted warmly and offered a Drip Hoodie deal...' },
   { id: 'CALL-002', lead: 'Priya Mehta', phone: '+91 87654 32109', duration: '1m 45s', outcome: 'interested', sentiment: 'positive', score: 78, date: 'Today, 09:15 AM', transcript: 'Customer showed strong interest in Premium Tees...' },
   { id: 'CALL-003', lead: 'Arjun Nair', phone: '+91 76543 21098', duration: '3m 02s', outcome: 'converted', sentiment: 'very_positive', score: 95, date: 'Today, 08:30 AM', transcript: 'Excellent sales conversation, closed Cargo Pants deal...' },
   { id: 'CALL-004', lead: 'Sneha Patil', phone: '+91 65432 10987', duration: '0m 45s', outcome: 'not_interested', sentiment: 'negative', score: 22, date: 'Yesterday, 04:12 PM', transcript: 'Customer declined, requested do-not-call listing...' },
@@ -77,7 +77,7 @@ export const mockActivity = [
   { id: 5, type: 'call_failed', text: 'Sneha Patil — Declined, added to DNC list', time: '4 hours ago', status: 'warning' },
   { id: 6, type: 'call_completed', text: 'Rahul Sharma — Converted (₹1,899 order)', time: '5 hours ago', status: 'success' },
   { id: 7, type: 'webhook_triggered', text: 'WhatsApp follow-up sent to 12 warm leads', time: '6 hours ago', status: 'info' },
-  { id: 8, type: 'agent_updated', text: 'Agent "Aria" persona updated — Friendly & Energetic', time: 'Yesterday', status: 'neutral' },
+  { id: 8, type: 'agent_updated', text: 'Agent "Sai" persona updated — Friendly & Energetic', time: 'Yesterday', status: 'neutral' },
 ];
 
 export const mockFavorites = [

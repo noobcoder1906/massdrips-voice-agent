@@ -37,7 +37,7 @@ export default function Settings() {
   const { showToast } = useToast();
 
   const [agentSettings, setAgentSettings] = useState({
-    name: 'Aria',
+    name: 'Sai',
     brand: 'Mass Drips',
     language: 'hinglish',
     tone: 'friendly',
@@ -96,7 +96,7 @@ export default function Settings() {
             <div className="space-y-5">
               <div className="grid sm:grid-cols-2 gap-4">
                 {[
-                  { label: 'Agent Name', key: 'name', type: 'text', placeholder: 'e.g. Aria' },
+                  { label: 'Agent Name', key: 'name', type: 'text', placeholder: 'e.g. Sai' },
                   { label: 'Brand Name', key: 'brand', type: 'text', placeholder: 'e.g. Mass Drips' },
                 ].map(({ label, key, type, placeholder }) => (
                   <div key={key}>

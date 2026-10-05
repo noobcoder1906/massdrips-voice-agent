@@ -1,4 +1,4 @@
-"""
+﻿"""
 backend/voice/chatterbox_pipeline.py
 
 Dual-Track Low-Latency Voice Clone Pipeline.
@@ -20,7 +20,7 @@ Race-to-play strategy with background pre-synthesis queue:
     - Result: your cloned voice from sentence 2 onwards regardless of CPU speed
 
   Barge-in:
-    - User speaks → flush all pending synthesis tasks instantly
+    - User speaks â†’ flush all pending synthesis tasks instantly
     - Cancel any in-progress chatterbox generation
     - Clean state for new turn
 
@@ -42,19 +42,19 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# ─── Config ──────────────────────────────────────────────────────────────────
+# â”€â”€â”€ Config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 REF_WAV_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
-    "clones", "voicebox_reference.wav",
+    "clones", "my_voice.wav",
 )
-RACE_TIMEOUT_S = 0.55       # How long to wait for chatterbox before falling back to edge_tts
+RACE_TIMEOUT_S = 1.2       # Give chatterbox enough time on GPU (T4 generates in ~0.8-1s)
 TARGET_SAMPLE_RATE = 16000  # 16kHz for WebSocket pipeline
 _thread_pool = concurrent.futures.ThreadPoolExecutor(
     max_workers=2, thread_name_prefix="chatterbox"
 )
 
 
-# ─── Chatterbox loader (lazy, singleton) ─────────────────────────────────────
+# â”€â”€â”€ Chatterbox loader (lazy, singleton) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _cb_model = None
 _cb_model_lock = asyncio.Lock()
 
@@ -93,7 +93,7 @@ def _cuda_available() -> bool:
         return False
 
 
-# ─── PCM helpers ─────────────────────────────────────────────────────────────
+# â”€â”€â”€ PCM helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def _resample(samples: np.ndarray, src_rate: int, dst_rate: int) -> np.ndarray:
     if src_rate == dst_rate:
         return samples
@@ -112,7 +112,7 @@ def _to_pcm16(samples: np.ndarray) -> bytes:
     return np.clip(samples, -1.0, 1.0).astype(np.float32).__mul__(32767).astype(np.int16).tobytes()
 
 
-# ─── Chatterbox synthesis (sync, runs in thread pool) ────────────────────────
+# â”€â”€â”€ Chatterbox synthesis (sync, runs in thread pool) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def _synth_chatterbox_sync(text: str, model) -> Optional[bytes]:
     """Synthesize one sentence with Chatterbox voice clone. Returns PCM16 bytes."""
     if model is None:
@@ -122,20 +122,25 @@ def _synth_chatterbox_sync(text: str, model) -> Optional[bytes]:
         return None
     try:
         t0 = time.perf_counter()
-        wav = model.generate(text, audio_prompt_path=REF_WAV_PATH)
+        wav = model.generate(
+            text,
+            audio_prompt_path=REF_WAV_PATH,
+            cfg_weight=0.5,          # 0=more prompt-like voice, 1=more neutral (0.5 = balanced clone)
+            exaggeration=0.65,       # Slight expressiveness for sales energy
+        )
         elapsed = time.perf_counter() - t0
         sr = getattr(model, "sr", 24000)
         samples = wav.squeeze().cpu().numpy().astype(np.float32)
         resampled = _resample(samples, sr, TARGET_SAMPLE_RATE)
         pcm = _to_pcm16(resampled)
-        logger.info("Chatterbox: %.2fs for %d chars → %d PCM bytes", elapsed, len(text), len(pcm))
+        logger.info("Chatterbox: %.2fs for %d chars â†’ %d PCM bytes", elapsed, len(text), len(pcm))
         return pcm
     except Exception as e:
         logger.error("Chatterbox synthesis error: %s", e)
         return None
 
 
-# ─── Edge-TTS synthesis (async, already fast) ────────────────────────────────
+# â”€â”€â”€ Edge-TTS synthesis (async, already fast) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async def _synth_edge_tts(text: str) -> Optional[bytes]:
     """Fallback: edge_tts with PrabhatNeural. Returns PCM16 bytes."""
     try:
@@ -162,7 +167,7 @@ async def _synth_edge_tts(text: str) -> Optional[bytes]:
         return None
 
 
-# ─── DualTrackSynthesizer ─────────────────────────────────────────────────────
+# â”€â”€â”€ DualTrackSynthesizer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class DualTrackSynthesizer:
     """
     Manages a sentence pre-synthesis queue with dual-track (chatterbox + edge_tts)
@@ -229,7 +234,7 @@ class DualTrackSynthesizer:
         self._worker_task = asyncio.create_task(self._synthesis_worker())
 
     async def close(self):
-        """Signal end of turn — push sentinel."""
+        """Signal end of turn â€” push sentinel."""
         await self._pending_texts.put(None)
 
     async def _synthesis_worker(self):
@@ -279,14 +284,14 @@ class DualTrackSynthesizer:
                     edge_task.cancel()
                     logger.info("Chatterbox won race for first sentence!")
                 except asyncio.TimeoutError:
-                    # Chatterbox too slow for first sentence — use edge_tts immediately
+                    # Chatterbox too slow for first sentence â€” use edge_tts immediately
                     logger.info("Edge-TTS won race (chatterbox still running)")
                     try:
                         pcm = await asyncio.wait_for(edge_task, timeout=3.0)
                     except asyncio.TimeoutError:
                         pcm = None
                     # Chatterbox result will be used for next sentence (pre-synthesized)
-                    # Keep cb_future running in background — result stored for next slot
+                    # Keep cb_future running in background â€” result stored for next slot
             else:
                 # Subsequent sentences: chatterbox was pre-synthesizing during playback
                 # Just await the result (should already be done or close to done)
@@ -303,7 +308,10 @@ class DualTrackSynthesizer:
             self._pending_texts.task_done()
 
 
-# ─── Singleton per-session factory ───────────────────────────────────────────
+# â”€â”€â”€ Singleton per-session factory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def create_synthesizer() -> DualTrackSynthesizer:
     """Create a fresh DualTrackSynthesizer for one call session."""
     return DualTrackSynthesizer()
+
+
+

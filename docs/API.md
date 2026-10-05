@@ -41,7 +41,7 @@ Create a new brand tenant.
   "slug": "mass-drips",
   "email": "admin@massdrips.com",
   "persona": {
-    "agent_name": "Aria",
+    "agent_name": "Sai",
     "language": "hinglish",
     "tone": "friendly",
     "agent_type": "sales",

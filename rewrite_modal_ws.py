@@ -216,7 +216,7 @@ export default function LiveCallModal({ isOpen, onClose, onCallCompleted, leadNa
                 A
               </div>
               <div>
-                <h2 className="text-white font-bold tracking-wide">Aria AI</h2>
+                <h2 className="text-white font-bold tracking-wide">Sai AI</h2>
                 <p className="text-[10px] text-[#00e599] font-bold uppercase tracking-widest">Live Call Active</p>
               </div>
             </div>
@@ -280,7 +280,7 @@ export default function LiveCallModal({ isOpen, onClose, onCallCompleted, leadNa
                   ) : isAgentSpeaking ? (
                     <p className="text-xs font-bold text-[#00e599] uppercase tracking-widest flex items-center justify-center gap-2">
                       <span className="w-2 h-2 bg-[#00e599] rounded-full animate-ping" />
-                      Aria is speaking...
+                      Sai is speaking...
                     </p>
                   ) : (
                     <p className="text-xs font-bold text-white uppercase tracking-widest flex items-center justify-center gap-2">
@@ -318,7 +318,7 @@ export default function LiveCallModal({ isOpen, onClose, onCallCompleted, leadNa
             
             {transcript.map((item, idx) => (
               <div key={idx} className={`flex flex-col max-w-[85%] ${item.role === 'agent' ? 'self-start' : 'self-end ml-auto'}`}>
-                <span className="text-[10px] text-white/40 mb-1 ml-1">{item.role === 'agent' ? 'Aria' : leadName} • {item.ts}</span>
+                <span className="text-[10px] text-white/40 mb-1 ml-1">{item.role === 'agent' ? 'Sai' : leadName} • {item.ts}</span>
                 <div className={`p-3 rounded-2xl text-sm ${
                   item.role === 'agent' 
                     ? 'bg-white/5 border border-white/10 text-white rounded-tl-sm' 

@@ -200,7 +200,7 @@ function simulateLiveCall() {
   const box = document.getElementById('liveTranscript');
   box.innerHTML += `
     <div class="chat-bubble chat-agent">
-      <strong>Aria (Mass Drips Agent):</strong> "Namaste ${leadName.split(' ')[0]} ji! Main Mass Drips se Aria bol rahi hoon. Aapne hamara Drip Hoodie check kiya tha?"
+      <strong>Sai (Mass Drips Agent):</strong> "Namaste ${leadName.split(' ')[0]} ji! Main Mass Drips se Sai bol rahi hoon. Aapne hamara Drip Hoodie check kiya tha?"
     </div>
   `;
   box.scrollTop = box.scrollHeight;

@@ -84,7 +84,7 @@ def generate_post_call_message(
 
     if outcome == "converted":
         msg = (
-            f"Hey {first_name}! Thanks for chatting with Aria at {brand_name} 🔥 "
+            f"Hey {first_name}! Thanks for chatting with Sai at {brand_name} 🔥 "
             f"Use code *{discount}* for 10% off your first order! "
             f"Shop now: {catalog_url}"
         )
@@ -93,7 +93,7 @@ def generate_post_call_message(
     elif outcome in ("interested", "callback"):
         prod_name = products_discussed[0]["name"] if products_discussed else "our hoodies"
         msg = (
-            f"Hi {first_name}! Aria from {brand_name} here. "
+            f"Hi {first_name}! Sai from {brand_name} here. "
             f"Just dropping the catalog link you asked about -- {prod_name} and more: "
             f"{catalog_url} 🛍️ Use *{discount}* for 10% off!"
         )

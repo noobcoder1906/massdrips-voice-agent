@@ -117,7 +117,7 @@ export default function LiveCallModal({ isOpen, onClose, leadName = 'Customer', 
   };
 
   const startConversation = async () => {
-    const greeting = "Hey there! Aria this side from MASS DRIPS. We are running an exclusive drop right now. What are you looking for today, hoodies or oversized tees?";
+    const greeting = "Hey there! Sai this side from MASS DRIPS. We are running an exclusive drop right now. What are you looking for today, hoodies or oversized tees?";
     addTranscript('agent', greeting);
     await speakAgentText(greeting);
   };
@@ -258,7 +258,7 @@ export default function LiveCallModal({ isOpen, onClose, leadName = 'Customer', 
                 A
               </div>
               <div>
-                <h2 className="text-white font-bold tracking-wide">Aria AI</h2>
+                <h2 className="text-white font-bold tracking-wide">Sai AI</h2>
                 <p className="text-[10px] text-[#00e599] font-bold uppercase tracking-widest">Live Call Active</p>
               </div>
             </div>
@@ -288,7 +288,7 @@ export default function LiveCallModal({ isOpen, onClose, leadName = 'Customer', 
                 <div className="w-24 h-24 rounded-full bg-[#00e599]/10 flex items-center justify-center mb-4">
                   <PhoneCall size={32} className="text-[#00e599]" />
                 </div>
-                <p className="text-white font-bold tracking-wide">Connecting to Aria...</p>
+                <p className="text-white font-bold tracking-wide">Connecting to Sai...</p>
                 <p className="text-xs text-white/50 mt-2">Establishing secure line</p>
               </div>
             ) : callState === 'ended' ? (
@@ -324,7 +324,7 @@ export default function LiveCallModal({ isOpen, onClose, leadName = 'Customer', 
                   ) : isAgentSpeaking ? (
                     <p className="text-xs font-bold text-[#00e599] uppercase tracking-widest flex items-center justify-center gap-2">
                       <span className="w-2 h-2 bg-[#00e599] rounded-full animate-ping" />
-                      Aria is speaking...
+                      Sai is speaking...
                     </p>
                   ) : isListening ? (
                     <p className="text-xs font-bold text-white uppercase tracking-widest flex items-center justify-center gap-2">
@@ -366,7 +366,7 @@ export default function LiveCallModal({ isOpen, onClose, leadName = 'Customer', 
             
             {transcript.map((item, idx) => (
               <div key={idx} className={`flex flex-col max-w-[85%] ${item.role === 'agent' ? 'self-start' : 'self-end ml-auto'}`}>
-                <span className="text-[10px] text-white/40 mb-1 ml-1">{item.role === 'agent' ? 'Aria' : leadName} • {item.ts}</span>
+                <span className="text-[10px] text-white/40 mb-1 ml-1">{item.role === 'agent' ? 'Sai' : leadName} • {item.ts}</span>
                 <div className={`p-3 rounded-2xl text-sm ${
                   item.role === 'agent' 
                     ? 'bg-white/5 border border-white/10 text-white rounded-tl-sm' 
@@ -379,7 +379,7 @@ export default function LiveCallModal({ isOpen, onClose, leadName = 'Customer', 
             
             {(isAgentSpeaking || (isProcessingRef.current && !isListening)) && (
               <div className={`flex flex-col max-w-[85%] ${isAgentSpeaking ? 'self-start' : 'self-end ml-auto'}`}>
-                 <span className="text-[10px] text-white/40 mb-1 ml-1">{isAgentSpeaking ? 'Aria' : leadName}</span>
+                 <span className="text-[10px] text-white/40 mb-1 ml-1">{isAgentSpeaking ? 'Sai' : leadName}</span>
                  <div className="p-3 rounded-2xl bg-white/5 border border-white/10 text-white/50 text-sm flex items-center gap-2">
                    <div className="flex gap-1">
                      <span className="w-1.5 h-1.5 rounded-full bg-white/50 animate-bounce" style={{ animationDelay: '0ms' }} />

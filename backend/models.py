@@ -44,7 +44,7 @@ class PyObjectId(str):
 # ── Tenant (SaaS Client) ───────────────────────────────────────────────────────
 class TenantPersona(BaseModel):
     """AI agent persona configuration per tenant."""
-    agent_name:    str    = "Aria"
+    agent_name:    str    = "Sai"
     brand_name:    str    = "VoxSales"
     language:      str    = "english"    # english | hindi | hinglish
     tone:          str    = "friendly"   # friendly | professional | casual
